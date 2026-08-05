@@ -302,15 +302,16 @@ play_local_alert() {
 notify_all() {
     local topic="${4:-}"
     [ -z "$topic" ] && topic="${NTFY_TOPIC:-}"
-    local ok=1
-    send_pushover "$1" "$2" "$3" && ok=0
-    send_telegram "$1" "$2"
-    send_discord "$1" "$2"
-    send_email "$1" "$2"
-    send_gotify "$1" "$2"
-    send_ntfy "$1" "$2" "$3" "$topic" && ok=0
+    local msg ok=1
+    msg=$(echo -e "$1")
+    send_pushover "$msg" "$2" "$3" && ok=0
+    send_telegram "$msg" "$2"
+    send_discord "$msg" "$2"
+    send_email "$msg" "$2"
+    send_gotify "$msg" "$2"
+    send_ntfy "$msg" "$2" "$3" "$topic" && ok=0
     if [ "${USE_NTFY:-false}" = true ] && [ -n "${NTFY_TOPIC:-}" ] && [ "$topic" != "${NTFY_TOPIC:-}" ]; then
-        send_ntfy "$1" "$2" "$3" ""
+        send_ntfy "$msg" "$2" "$3" ""
     fi
     [ $ok -ne 0 ] && { play_local_alert; echo -e "$1" >> "$LOG_FILE"; }
 }
