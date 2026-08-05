@@ -7,6 +7,6 @@
     "brief": "voxwatch rebuild · multi-film pick-and-track marquee watcher",
     "nav": "N5 floating pill",
     "footer": "Ft5 statement",
-    "notes": "N5/Ft5 kept from prior build for product identity; slop 58/58, contrast pass; prototype skill used for the ledger picker"
+    "notes": "N5/Ft5 kept from prior build for product identity; slop 58/58, contrast pass; prototype skill used for the ledger picker; catalog version: 10-film catalog + visitor picks via ntfy control topic, end-to-end verified (PICK/UNPICK round-trips, persistence, lock, digest); commits aa6472c, 9541330"
   }
 ]
