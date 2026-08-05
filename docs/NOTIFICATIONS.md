@@ -12,6 +12,11 @@ Two roles:
 `voxwatch-the-odyssey`. The site's "notify me" buttons point there; anyone can
 subscribe in the app or browser with no account. No setup needed.
 
+**Control topic (visitor picks).** The site's *track* buttons publish
+`PICK <slug>` / `UNPICK <slug>` to the topic in `CONTROL_TOPIC`; the monitor
+consumes it on every run. It's public, so picks are unauthenticated — use a
+non-obvious topic name if your site is publicly reachable.
+
 **Your private mirror.** Everything gets mirrored to one extra topic just for you:
 
 ```bash
