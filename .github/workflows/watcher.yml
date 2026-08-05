@@ -1,0 +1,44 @@
+# voxwatch — always-on watcher (GitHub Actions, not your PC).
+#
+# Runs every 30 minutes on GitHub's servers: reads visitor tracks from
+# Supabase, checks Vox for the chosen days, publishes ntfy alerts, and
+# commits fresh site data. Under the free tier limit (~1440 min/month).
+#
+# Setup: add repo secrets SUPABASE_URL + SUPABASE_ANON_KEY (project
+# settings → API → anon public key), then enable GitHub Pages with the
+# site/ folder as root. See docs/INSTALL.md.
+
+name: voxwatch watcher
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: run watcher
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          NTFY_MIRROR: ${{ secrets.NTFY_MIRROR }}
+        run: bash scripts/serverless-watch.sh
+
+      - name: commit fresh site data
+        run: |
+          git config user.name "voxwatch bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add site/data
+          if ! git diff --cached --quiet; then
+            git commit -m "site data refresh (scheduled watcher)"
+            git push
+          else
+            echo "no data changes — nothing to commit"
+          fi

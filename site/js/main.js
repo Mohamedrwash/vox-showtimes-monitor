@@ -1,12 +1,13 @@
 // main.js — voxwatch catalog + live watchlist
 // Fetches catalog.json + showtimes.json, renders unified catalog,
-// handles track/untrack via ntfy control topic, dialog + QR + copy.
+// handles track/untrack + chosen day via Supabase, dialog + QR + copy.
 
 (function () {
   'use strict';
 
-  var CONTROL_TOPIC = 'voxwatch-control';
-  var NTFY_SERVER = 'https://ntfy.sh';
+  var SUPABASE_URL = (window.VOXWATCH_SUPABASE && window.VOXWATCH_SUPABASE.url) || '';
+  var SUPABASE_KEY = (window.VOXWATCH_SUPABASE && window.VOXWATCH_SUPABASE.anonKey) || '';
+  var DEFAULT_CINEMA = 'City Centre Almaza';
 
   var catalogLedger = document.getElementById('catalog-ledger');
   var catalogEmpty = document.getElementById('catalog-empty');
@@ -31,12 +32,53 @@
   var SNAPSHOT = document.getElementById('snapshot-data');
   var CATALOG_SNAPSHOT = document.getElementById('snapshot-catalog');
 
-  var tracked = new Set(); // slugs of films the user has clicked "track"
+  var tracked = {}; // slug → chosen day ('' = any day), THIS browser only
+  var selectedDays = {}; // pending day selection per slug before tracking
   var catalog = [];
   var showtimes = null;
   var sourceState = 'loading'; // 'live' | 'snapshot' | 'offline'
 
+  var DAYS = dayOptions();
+
   function $ (id) { return document.getElementById(id); }
+
+  function clientId () {
+    var id = localStorage.getItem('voxwatch_client_id');
+    if (!id) {
+      id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('anon-' + Math.random().toString(36).slice(2));
+      localStorage.setItem('voxwatch_client_id', id);
+    }
+    return id;
+  }
+
+  function dayOptions () {
+    var out = [{ value: '', label: 'any' }];
+    var d = new Date();
+    d.setDate(d.getDate() + 1);
+    for (var i = 0; i < 7; i++) {
+      var v = String(d.getFullYear()) + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+      out.push({ value: v, label: d.toLocaleDateString([], { weekday: 'short', day: '2-digit' }) });
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }
+
+  function dayLabel (v) {
+    for (var i = 0; i < DAYS.length; i++) if (DAYS[i].value === v) return DAYS[i].label;
+    return 'any day';
+  }
+
+  function sb (method, path, body) {
+    return fetch(SUPABASE_URL + '/rest/v1/' + path, {
+      method: method,
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+  }
 
   function formatSynced (ts) {
     if (!ts) return '—';
@@ -76,8 +118,7 @@
     document.querySelector('.dial-needle').style.setProperty('--needle', angle + 'deg');
     syncText.textContent = formatSynced(data ? data.last_synced : '');
   }
-
-  function renderLedger (films, watchedMap) {
+  function renderLedger (films, watchedMap, daySel) {
     catalogLedger.innerHTML = '';
     if (!films.length) {
       catalogEmpty.textContent = 'no films in catalog';
@@ -86,7 +127,7 @@
     var frag = document.createDocumentFragment();
     films.forEach(function (film, idx) {
       var slug = film.slug;
-      var watched = watchedMap && watchedMap[slug];
+      var watched = watchedMap && watchedMap[slug] !== undefined;
       var row = document.createElement('div');
       row.className = 'ledger-row' + (document.documentElement.classList.contains('reduce-motion') ? '' : ' enter');
       row.style.animationDelay = Math.min(idx * 40, 320) + 'ms';
@@ -105,7 +146,7 @@
       dot.setAttribute('aria-hidden', 'true');
       var label = document.createElement('span');
       if (watched) {
-        label.textContent = 'watching';
+        label.textContent = 'watching · ' + dayLabel(watchedMap[slug]);
         status.classList.add('watching');
       } else {
         label.textContent = 'pick me';
@@ -120,14 +161,34 @@
       action.textContent = watched ? 'untrack' : 'track';
       action.dataset.slug = film.slug;
 
+      var strip = document.createElement('div');
+      strip.className = 'day-strip';
+      DAYS.forEach(function (opt) {
+        var chip = document.createElement('button');
+        chip.className = 'day-chip';
+        chip.type = 'button';
+        chip.textContent = opt.label;
+        var active = daySel && daySel[slug] === opt.value;
+        if (active) chip.classList.add('active');
+        chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+        chip.setAttribute('aria-label', 'notify me ' + opt.label + ' for ' + film.title);
+        chip.addEventListener('click', function (e) {
+          e.stopPropagation();
+          pickDay(slug, opt.value);
+        });
+        strip.appendChild(chip);
+      });
+
       row.appendChild(title);
       row.appendChild(status);
       row.appendChild(action);
+      row.appendChild(strip);
 
       row.addEventListener('click', function (e) {
-        if (e.target === action) return; // button handles its own click
+        if (e.target === action || e.target.closest('.day-chip')) return; // button/chips handle their own clicks
         openDialog(film.slug);
       });
+
       row.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDialog(film.slug); }
       });
@@ -142,26 +203,49 @@
     catalogLedger.appendChild(frag);
   }
 
-  function toggleTrack (slug, enable) {
-    if (enable) {
-      tracked.add(slug);
-      localStorage.setItem('voxwatch_tracked', JSON.stringify(Array.from(tracked)));
-      publishControl('PICK ' + slug);
-    } else {
-      tracked.delete(slug);
-      localStorage.setItem('voxwatch_tracked', JSON.stringify(Array.from(tracked)));
-      publishControl('UNPICK ' + slug);
+  function pickDay (slug, v) {
+    selectedDays[slug] = v;
+    if (tracked[slug] !== undefined) {
+      var old = tracked[slug];
+      tracked[slug] = v;
+      localStorage.setItem('voxwatch_tracks', JSON.stringify(tracked));
+      sb('PATCH', 'tracks?slug=eq.' + encodeURIComponent(slug) + '&client_id=eq.' + encodeURIComponent(clientId()), { day: v })
+        .catch(function () { tracked[slug] = old; refreshLedger(); });
     }
     refreshLedger();
   }
 
-  function publishControl (message) {
-    if (!CONTROL_TOPIC) return;
-    fetch(NTFY_SERVER + '/' + CONTROL_TOPIC + '/publish', {
-      method: 'PUT',
-      body: message,
-      headers: { 'Content-Type': 'text/plain' }
-    }).catch(function () {}); // fire and forget
+  function toggleTrack (slug, enable) {
+    var film = catalog.find(function (f) { return f.slug === slug; });
+    if (enable) {
+      var day = selectedDays[slug] || '';
+      tracked[slug] = day;
+      localStorage.setItem('voxwatch_tracks', JSON.stringify(tracked));
+      sb('POST', 'tracks', {
+        slug: slug,
+        title: film ? film.title : slug,
+        url: film ? film.url : ('https://egy.voxcinemas.com/movies/' + slug),
+        cinema: DEFAULT_CINEMA,
+        topic: 'voxwatch-' + slug,
+        day: day,
+        client_id: clientId()
+      }).catch(function () { delete tracked[slug]; refreshLedger(); });
+    } else {
+      delete tracked[slug];
+      localStorage.setItem('voxwatch_tracks', JSON.stringify(tracked));
+      sb('DELETE', 'tracks?slug=eq.' + encodeURIComponent(slug) + '&client_id=eq.' + encodeURIComponent(clientId()))
+        .catch(function () {});
+    }
+    refreshLedger();
+  }
+
+  function loadMyTracks () {
+    if (!SUPABASE_URL) return Promise.resolve();
+    return sb('GET', 'tracks?select=slug,day&client_id=eq.' + encodeURIComponent(clientId()))
+      .then(function (r) { return r.json(); })
+      .then(function (rows) {
+        rows.forEach(function (row) { tracked[row.slug] = row.day || ''; });
+      }).catch(function () {});
   }
 
   function openDialog (slug) {
@@ -238,13 +322,7 @@
   });
 
   function refreshLedger () {
-    var watchedMap = {};
-    if (showtimes && showtimes.films) {
-      showtimes.films.forEach(function (f) { watchedMap[f.slug] = true; });
-    }
-    // merge tracked into watchedMap so "track" buttons stay pressed
-    tracked.forEach(function (s) { watchedMap[s] = true; });
-    renderLedger(catalog, watchedMap);
+    renderLedger(catalog, tracked, selectedDays);
   }
 
   function loadCatalog () {
@@ -269,25 +347,23 @@
   }
 
   function init () {
-    // restore tracked from localStorage
+    // restore my tracks from localStorage (optimistic UI, server re-syncs)
     try {
-      var stored = JSON.parse(localStorage.getItem('voxwatch_tracked') || '[]');
-      stored.forEach(function (s) { tracked.add(s); });
+      var cache = JSON.parse(localStorage.getItem('voxwatch_tracks') || '{}');
+      Object.keys(cache).forEach(function (s) { tracked[s] = cache[s]; });
+      renderLedger(catalog, tracked, selectedDays);
     } catch (e) {}
 
     loadCatalog().then(function (cat) {
       catalog = cat.films || [];
+      return loadMyTracks();
+    }).then(function () {
       return loadShowtimes();
     }).then(function (st) {
       showtimes = st.data;
-      var watchedMap = {};
-      if (showtimes && showtimes.films) {
-        showtimes.films.forEach(function (f) { watchedMap[f.slug] = true; });
-      }
-      tracked.forEach(function (s) { watchedMap[s] = true; });
       setStatus(showtimes ? st.source : 'offline', showtimes || { films: [], last_synced: '' });
       setStats(showtimes || { films: [], last_synced: '' });
-      renderLedger(catalog, watchedMap);
+      renderLedger(catalog, tracked, selectedDays);
     }).catch(function () {
       setStatus('offline', null);
       catalogEmpty.textContent = 'failed to load catalog';

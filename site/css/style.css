@@ -435,6 +435,36 @@ body {
 
 .chip:active { transform: scale(0.97); }
 
+.day-strip {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.day-chip {
+  font-family: var(--font-label);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-rule-2);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-out), background-color var(--dur-short) ease, border-color var(--dur-short) ease, color var(--dur-short) ease;
+}
+
+.day-chip.active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-paper-3);
+}
+
+.day-chip:active { transform: scale(0.97); }
+
 .ledger-row.enter {
   opacity: 0;
   transform: translateY(6px);
@@ -702,12 +732,14 @@ body {
     grid-template-columns: 1fr auto;
     grid-template-areas:
       "title status"
+      "strip strip"
       "chip chip";
     row-gap: 6px;
     padding: 16px 18px;
   }
   .ledger-row .film-title { grid-area: title; }
   .ledger-status { grid-area: status; justify-self: end; }
+  .ledger-row .day-strip { grid-area: strip; }
   .ledger-row .chip { grid-area: chip; align-self: center; width: 100%; text-align: center; }
   .footer-meta { flex-direction: column; gap: var(--space-xs); }
 }
