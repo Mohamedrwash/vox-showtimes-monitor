@@ -7,10 +7,13 @@
 self.addEventListener('push', function (event) {
   var payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch (e) {}
-  var title = payload.title || 'voxwatch';
-  var message = payload.message || 'a film you track is available';
-  var click = payload.click || payload.url || null;
-  var tag = 'voxwatch-' + (payload.topic || 'alert');
+  // ntfy wraps the message object one level down (web push payload shape):
+  // { event, subscription_id, message: { id, title, message, click, topic, ... } }
+  var msg = (payload.message && typeof payload.message === 'object') ? payload.message : payload;
+  var title = msg.title || 'voxwatch';
+  var message = msg.message || 'a film you track is available';
+  var click = msg.click || msg.url || null;
+  var tag = 'voxwatch-' + (msg.topic || 'alert');
   var options = {
     body: message,
     tag: tag,
