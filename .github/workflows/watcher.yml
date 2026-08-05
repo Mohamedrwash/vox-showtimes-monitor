@@ -1,11 +1,11 @@
-# voxwatch — always-on watcher (GitHub Actions, not your PC).
+# voxwatch - always-on watcher (GitHub Actions, not your PC).
 #
 # Runs every 30 minutes on GitHub's servers: reads visitor tracks from
 # Supabase, checks Vox for the chosen days, publishes ntfy alerts, and
 # commits fresh site data. Under the free tier limit (~1440 min/month).
 #
 # Setup: add repo secrets SUPABASE_URL + SUPABASE_ANON_KEY (project
-# settings → API → anon public key), then enable GitHub Pages with the
+# settings -> API -> anon public key), then enable GitHub Pages with the
 # site/ folder as root. See docs/INSTALL.md.
 
 name: voxwatch watcher
@@ -40,5 +40,5 @@ jobs:
             git commit -m "site data refresh (scheduled watcher)"
             git push
           else
-            echo "no data changes — nothing to commit"
+            echo "no data changes - nothing to commit"
           fi
