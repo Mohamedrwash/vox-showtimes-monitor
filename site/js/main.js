@@ -387,6 +387,12 @@
       }).catch(function () {});
   }
 
+  function fmtDay (v) {
+    if (!v || String(v).length !== 8) return '';
+    var d = new Date(Date.UTC(+v.slice(0, 4), +v.slice(4, 6) - 1, +v.slice(6, 8)));
+    return d.toLocaleDateString([], { weekday: 'short', day: '2-digit', month: 'short' });
+  }
+
   function openDialog (slug) {
     var film = catalog.find(function (f) { return f.slug === slug; });
     if (!film) return;
@@ -403,6 +409,8 @@
     if (filmData.days && filmData.days.length) {
       filmData.days.forEach(function (day) {
         if (day.times && day.times.length) {
+          var dayText = day.label || fmtDay(day.date);
+          if (dayText) timesHtml += '<p class="dialog-day">' + dayText + '</p>';
           day.times.forEach(function (t) {
             var fmt = t.format ? ' [' + t.format + ']' : '';
             var link = t.booking ? '<a href="' + t.booking + '" target="_blank" rel="noopener" class="time-chip-link">' + t.time + fmt + '</a>' : '<span class="time-chip">' + t.time + fmt + '</span>';
