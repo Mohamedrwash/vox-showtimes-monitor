@@ -15,6 +15,13 @@ track's `topic` column (empty = `voxwatch-<slug>`); in PC mode it's derived from
 `movies.conf`. The site's "notify me" buttons point there; anyone can subscribe in the
 app or browser with no account. No setup needed.
 
+**Per-browser Web Push (the bell in the nav).** Each visitor's browser gets its own
+private topic `voxwatch-u-<clientId>`. Clicking the bell registers the browser with
+ntfy's anonymous Web Push API (`POST /v1/webpush`), and the watcher publishes film
+updates to that browser's topic too - so every tracked film pings the visitor's
+browser directly (via the service worker in `site/sw.js`), not just the public topic.
+The enable state is stored in the `push_state` Supabase table.
+
 **Visitor picks no longer use ntfy.** The site's *track* buttons write straight to the
 Supabase `tracks` table (public anon key + RLS by design) - no control topic to set up
 or poll.
@@ -113,8 +120,14 @@ unguessable-by-accident; treat the private one as secret.
 ## Testing
 
 **Cloud mode:** Actions - **voxwatch watcher** - Run workflow, and watch the log for
-`ntfy sent (topic=...)` lines. To re-test a film, delete its key from
+`ntfy sent (topic=...)` lines (public film topic + one per browser that tracks the
+film). To re-test a film, delete its key from
 `site/data/notified.json` (the bot will re-notify next run) or change the track's `day`.
+
+**Admin page:** `site/admin.html` lists every visitor's tracked films and browser-push
+state (from `tracks` + `push_state`), and can send a test ping to any browser or to
+everyone at once. Gate it by setting `window.VOXWATCH_ADMIN.passcode` in
+`site/js/config.js` (empty = page disabled).
 
 **PC mode:**
 
