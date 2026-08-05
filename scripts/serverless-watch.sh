@@ -180,6 +180,7 @@ while IFS= read -r tr; do
     title=$(jq -r '.title' <<< "$tr")
     url=$(jq -r '.url' <<< "$tr")
     topic=$(jq -r '.topic' <<< "$tr")
+    [ -n "$topic" ] || topic="voxwatch-$slug"
     key="$slug|${day:-any}"
 
     avail_tsv="$avail_dir/$slug.tsv"
