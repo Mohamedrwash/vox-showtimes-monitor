@@ -1,0 +1,11 @@
+# Logs and runtime state - never commit these
+*.log
+.known_showtimes*
+.heartbeat
+.fail_flag*
+.last_digest*
+.json_tmp/
+
+# Local configuration - contains your credentials and watchlist
+monitor.conf
+movies.conf

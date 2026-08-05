@@ -1,0 +1,75 @@
+# ============================================================
+# Vox Showtimes Monitor - configuration
+# ------------------------------------------------------------
+# Copy this file to `monitor.conf` and edit it.
+#   cp monitor.conf.example monitor.conf
+#
+# The FILMS being watched live in movies.conf (one film per
+# line). This file holds global settings and your personal
+# notification channels.
+# ============================================================
+
+# ---- Site data output ---------------------------------------
+# The monitor writes site/data/showtimes.json on every run so
+# the voxwatch website stays live. Set to false to disable.
+# Default location (src/../site/data) is fine for most setups.
+WRITE_SITE_DATA=true
+
+# How many seconds between checks (used only for heartbeat threshold)
+CHECK_INTERVAL=300
+
+# If any check is missed, alert after this many seconds
+HEARTBEAT_TIMEOUT=900
+
+# Ignore today's and tomorrow's showtimes (sold-out / not interesting)
+IGNORE_TODAY_TOMORROW=true
+
+# ---- Daily digest --------------------------------------------
+# Send a once-per-day summary of today + tomorrow (per film)
+ENABLE_DIGEST=true
+
+# ---- Notification channels ------------------------------------
+# Flip USE_* to `true` and fill in credentials. Any combination works.
+# ALL channels are optional.
+
+# 1) Pushover (https://pushover.net/)  - free tier: 7,500 msgs/mo
+USE_PUSHOVER=true
+PUSHOVER_USER_KEY="ukbe91fhzki2smuyjeek88mvb4gosm"
+PUSHOVER_API_TOKEN="astzdgtv3mgojc76w7qnw11o9dkm5j"
+
+# 2) Telegram (https://t.me/BotFather) - free, no limits
+USE_TELEGRAM=false
+TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN"
+TELEGRAM_CHAT_ID="YOUR_CHAT_ID"
+
+# 3) Discord webhook (server -> Integrations -> Webhooks) - free
+USE_DISCORD=false
+DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/ID/TOKEN"
+
+# 4) Email / SMS-gateway (needs the `mail`/`mailutils` package) - free
+USE_EMAIL=false
+EMAIL_ADDRESS="your.email@example.com"
+
+# 5) ntfy.sh (https://ntfy.sh/) - FREE, NO ACCOUNT REQUIRED.
+#    THIS IS THE VISITOR CHANNEL: every film in movies.conf gets
+#    its own public topic voxwatch-<slug>, and the site's
+#    "notify me" buttons point at it. Leave USE_NTFY=true.
+#    NTFY_TOPIC below is optional: a private mirror topic so YOU
+#    also get every film's alerts on one topic.
+USE_NTFY=true
+NTFY_TOPIC="voxwatch-owner-mysecret"
+NTFY_SERVER="https://ntfy.sh"          # or your self-hosted ntfy server
+NTFY_PRIORITY="high"
+NTFY_TAGS="ticket,cinema"
+
+# 6) Gotify (https://gotify.net/) - FREE, self-hosted via Docker
+#    (the alias is fine: no subscription fees, you run the server)
+USE_GOTIFY=false
+GOTIFY_SERVER="http://localhost:8080"
+GOTIFY_TOKEN="YOUR_GOTIFY_APP_TOKEN"
+GOTIFY_PRIORITY=5
+
+# ---- Email helper (system, advanced) --------------------------
+# The email channel uses the local `mail` binary if available.
+# On Alpine/Debian install with:  apk add mailx  OR  apt install mailutils
+# ============================================================

@@ -1,0 +1,19 @@
+# ============================================================
+# Vox Showtimes Monitor - film watchlist
+# ------------------------------------------------------------
+# Copy this file to `movies.conf` and edit it.
+#   cp movies.conf.example movies.conf
+#
+# ONE FILM PER LINE, in this format:
+#   slug|Display Name|Cinema Name|Full Vox movie URL
+#
+# - slug: short, URL-safe id. It becomes the film's public
+#   push topic (voxwatch-<slug>) that website visitors
+#   subscribe to, so pick something stable.
+# - Cinema name must match the heading on the movie page
+#   exactly (the monitor looks for that section).
+#
+# Lines starting with # and empty lines are ignored.
+# ============================================================
+
+the-odyssey|The Odyssey|City Centre Almaza|https://egy.voxcinemas.com/movies/the-odyssey

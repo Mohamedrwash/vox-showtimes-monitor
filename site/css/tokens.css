@@ -1,0 +1,104 @@
+/* ============================================================
+   tokens.css · Lumen · Night Foundry (canonical drop)
+   cool-violet paper (L 13% · H 265) · molten brass (H 50)
+   ============================================================ */
+
+:root {
+  /* ---- surfaces -------------------------------------------------- */
+  --color-paper:      oklch(13% 0.014 265);
+  --color-paper-2:    oklch(17% 0.016 265);
+  --color-paper-3:    oklch(21% 0.018 265);
+  --color-paper-emit: oklch(76% 0.17 50 / 0.04);
+  --color-ink:        oklch(96% 0.006 262);
+  --color-ink-2:      oklch(88% 0.008 262);
+  --color-muted:      oklch(78% 0.010 262);
+  --color-neutral:    oklch(78% 0.012 262);
+
+  /* ---- rules ------------------------------------------------------ */
+  --color-rule:            oklch(96% 0.006 262 / 0.10);
+  --color-rule-2:          oklch(96% 0.006 262 / 0.18);
+  --rule-blueprint:        oklch(96% 0.006 262 / 0.04);
+  --rule-hair:             1px;
+
+  /* ---- accents ----------------------------------------------------- */
+  --color-accent:     oklch(76% 0.17 50);
+  --color-accent-ink: oklch(20% 0.05 60);
+  --color-accent-2:   oklch(68% 0.16 18);
+  --color-glow:       oklch(80% 0.16 50 / 0.42);
+  --color-glow-2:     oklch(80% 0.16 50 / 0.22);
+  --color-focus:      oklch(74% 0.15 30);
+
+  /* ---- apparatus ---------------------------------------------------- */
+  --color-paper-emit-2: oklch(76% 0.17 50 / 0.08);
+  --color-filament-top: oklch(96% 0.05 50);
+  --color-filament-mid: oklch(80% 0.17 50);
+
+  /* ---- signal ------------------------------------------------------ */
+  --color-error:      oklch(68% 0.19 25);
+  --color-success:    oklch(75% 0.15 145);
+
+  /* ---- shadows ------------------------------------------------------ */
+  --shadow-pill:  0 8px 24px -12px oklch(0% 0 0 / 0.18);
+  --shadow-card:  0 24px 60px -28px oklch(0% 0 0 / 0.55);
+  --shadow-lift:  0 32px 64px -28px oklch(0% 0 0 / 0.6);
+  --shadow-dialog: 0 48px 96px -32px oklch(0% 0 0 / 0.7);
+
+  /* ---- qr ---------------------------------------------------------- */
+  /* scanners want dark modules on a light field: keep the chip warm */
+  --color-qr-field: oklch(96% 0.012 80);
+  --color-qr-module: oklch(24% 0.02 265);
+
+  /* ---- fonts ------------------------------------------------------- */
+  --font-display: "Instrument Serif", "Tiempos Headline", ui-serif, Georgia, serif;
+  --font-body:    "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-label:   "JetBrains Mono", "Geist Mono", ui-monospace, monospace;
+
+  /* ---- type scale (major third 1.25) ------------------------------ */
+  --text-xs:        0.64rem;
+  --text-sm:        0.8rem;
+  --text-base:      1rem;
+  --text-md:        1.25rem;
+  --text-lg:        1.5625rem;
+  --text-xl:        1.9531rem;
+  --text-2xl:       2.4414rem;
+  --text-3xl:       3.0518rem;
+  --text-display:   clamp(2.75rem, 5vw + 0.5rem, 4.75rem);
+  --text-display-s: clamp(2rem, 4vw + 0.5rem, 3.5rem);
+  --tracking-micro: 0.10em;
+
+  /* ---- spacing (4 pt scale) --------------------------------------- */
+  --space-3xs: 0.125rem;
+  --space-2xs: 0.25rem;
+  --space-xs:  0.5rem;
+  --space-sm:  0.75rem;
+  --space-md:  1rem;
+  --space-lg:  1.5rem;
+  --space-xl:  2.5rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6rem;
+  --space-4xl: 9rem;
+  --page-gutter: clamp(1rem, 4vw, 4rem);
+
+  /* ---- motion ------------------------------------------------------ */
+  --ease-out:     cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:  cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro:    120ms;
+  --dur-short:    220ms;
+  --dur-long:     420ms;
+  --dur-pulse:    4s;
+
+  /* ---- depth ------------------------------------------------------- */
+  --z-base:     1;
+  --z-raised:   10;
+  --z-dropdown: 100;
+  --z-sticky:   200;
+  --z-modal:    400;
+  --z-toast:    500;
+  --z-tooltip:  600;
+
+  /* ---- radius ------------------------------------------------------ */
+  --radius-pill: 999px;
+  --radius-lg:   16px;
+  --radius-md:   10px;
+  --radius-sm:   6px;
+}
