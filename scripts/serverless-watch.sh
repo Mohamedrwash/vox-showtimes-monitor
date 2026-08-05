@@ -69,7 +69,7 @@ if [ -n "${MOCK_TRACKS:-}" ]; then
 else
     tracks_json=$(curl -sf --max-time 30 \
         -H "apikey: $SUPABASE_KEY" -H "Authorization: Bearer $SUPABASE_KEY" \
-        "$SUPABASE_URL/rest/v1/tracks?select=id,slug,title,url,cinema,day,topic&order=created_at.asc") \
+        "$SUPABASE_URL/rest/v1/tracks?select=id,slug,title,url,cinema,day,topic,client_id&order=created_at.asc") \
         || { log "ERROR: supabase tracks fetch failed"; exit 1; }
 fi
 
@@ -153,6 +153,11 @@ echo "{\"last_synced\":\"$last_synced\",\"films\":[$films_json]}" > "$DATA_FILE"
 log "wrote $DATA_FILE"
 
 # ---------- notifications (dedupe per slug|day per day) ----------
+#
+# Two kinds of alert per track, each with its own dedupe key:
+#   slug|day                -> public film topic (voxwatch-<slug>), once per film+day
+#   u:<client_id>|slug|day  -> that visitor's browser topic (voxwatch-u-<client_id>)
+# A visitor only gets a browser ping for their own chosen day.
 
 if [ ! -f "$NOTIFIED_FILE" ]; then
     echo "{}" > "$NOTIFIED_FILE"
@@ -180,8 +185,12 @@ while IFS= read -r tr; do
     title=$(jq -r '.title' <<< "$tr")
     url=$(jq -r '.url' <<< "$tr")
     topic=$(jq -r '.topic' <<< "$tr")
+    client_id=$(jq -r '.client_id // ""' <<< "$tr")
     [ -n "$topic" ] || topic="voxwatch-$slug"
+    user_topic=""
+    [ -n "$client_id" ] && user_topic="voxwatch-u-$client_id"
     key="$slug|${day:-any}"
+    user_key="u:$client_id|$slug|${day:-any}"
 
     avail_tsv="$avail_dir/$slug.tsv"
     if [ ! -f "$avail_tsv" ]; then
@@ -198,6 +207,9 @@ while IFS= read -r tr; do
 
     if [ -z "$hit" ]; then
         new_notified=$(jq --arg k "$key" 'del(.[$k])' <<< "$new_notified")
+        if [ -n "$user_topic" ]; then
+            new_notified=$(jq --arg k "$user_key" 'del(.[$k])' <<< "$new_notified")
+        fi
         changed=1
         log "notify: $key — not available yet"
         continue
@@ -205,18 +217,26 @@ while IFS= read -r tr; do
 
     label=$(echo "$hit" | cut -d'|' -f2)
     times=$(echo "$hit" | cut -d'|' -f3)
+    msg="🎬 $title is available on $label at $times"
 
+    # public film topic: once per film+day
     if [ "$(jq -r --arg k "$key" '.[$k] // ""' <<< "$new_notified")" = "$(date +%Y%m%d)" ]; then
         log "notify: $key — already notified today"
-        continue
-    fi
-
-    msg="🎬 $title is available on $label at $times"
-    if notify "$msg" "$title — available $label" "$url" "$topic"; then
+    elif notify "$msg" "$title — available $label" "$url" "$topic"; then
         new_notified=$(jq --arg k "$key" --arg t "$(date +%Y%m%d)" '.[$k] = $t' <<< "$new_notified")
         changed=1
         if [ -n "$NTFY_MIRROR" ]; then
             notify "$msg" "$title — available $label" "$url" "$NTFY_MIRROR" || true
+        fi
+    fi
+
+    # this visitor's browser topic: once per user+film+day
+    if [ -n "$user_topic" ]; then
+        if [ "$(jq -r --arg k "$user_key" '.[$k] // ""' <<< "$new_notified")" = "$(date +%Y%m%d)" ]; then
+            log "notify: $user_key — already notified today"
+        elif notify "$msg" "$title — available $label" "$url" "$user_topic"; then
+            new_notified=$(jq --arg k "$user_key" --arg t "$(date +%Y%m%d)" '.[$k] = $t' <<< "$new_notified")
+            changed=1
         fi
     fi
 done < <(jq -c '.[]' <<< "$tracks_json")

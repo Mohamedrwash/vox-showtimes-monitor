@@ -21,6 +21,7 @@
 </script>
 <script defer src="js/vendor/qrcode.js"></script>
 <script defer src="js/config.js"></script>
+<script defer src="js/push.js"></script>
 <script defer src="js/main.js"></script>
 </head>
 <body>
@@ -30,6 +31,13 @@
   <div class="nav-links">
     <a href="#catalog" class="nav-link">01 · catalog</a>
   </div>
+  <button class="bell-btn" id="nav-bell" type="button" data-state="off" aria-label="enable browser notifications">
+    <svg class="bell-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+    </svg>
+    <span class="bell-label" id="nav-bell-label">notify</span>
+  </button>
   <span class="nav-status" id="nav-status" data-state="loading" title="watcher status">
     <span class="status-dot" aria-hidden="true"></span>
     <span class="status-text">connecting</span>
@@ -42,7 +50,7 @@
     <div class="hero-grid" aria-hidden="true"></div>
     <p class="eyebrow">00 · the marquee, watched</p>
     <h1 class="hero-title">pick any film.<br>we <em>watch</em> the marquee<br>for you.</h1>
-    <p class="hero-lede">voxwatch scans vox cinemas every half hour, around the clock. choose a film from the catalog, pick the day you want to see it — the watcher pings the film's topic the moment that day's showtimes go live. free, no account, no ads.</p>
+    <p class="hero-lede">voxwatch scans vox cinemas every half hour, around the clock. choose a film from the catalog, pick the day you want to see it — the watcher pings your browser (and the film's topic) the moment that day's showtimes go live. free, no account, no ads.</p>
     <div class="hero-cta">
       <a class="btn btn-primary" href="#catalog">choose a film</a>
     </div>
@@ -77,7 +85,7 @@
   <section class="section" id="catalog">
     <p class="eyebrow">01 · the catalog</p>
     <h2 class="section-title">pick a film. we start watching it.</h2>
-    <p class="section-lede">the catalog lists every film currently showing at vox cinemas. pick a day (or <strong>any</strong>), then tap <strong>track</strong> — you'll get pinged the moment that day's showtimes appear, right in the ntfy topic for the film. every visitor tracks their own picks; the watcher runs in the cloud, so it never sleeps.</p>
+    <p class="section-lede">the catalog lists every film currently showing at vox cinemas. pick a day (or <strong>any</strong>), then tap <strong>track</strong> — you'll get pinged the moment that day's showtimes appear, as a browser notification (tap <strong>notify</strong> above) and in the film's ntfy topic. every visitor tracks their own picks; the watcher runs in the cloud, so it never sleeps.</p>
     <div class="ledger" id="catalog-ledger">
       <div class="ledger-head">
         <span>film</span><span>status</span><span class="sr-only">action</span>
@@ -97,9 +105,12 @@
   <div class="footer-meta">
     <span>voxwatch</span>
     <span id="footer-status">watcher: connecting</span>
+    <a class="footer-admin" href="admin.html" rel="nofollow">admin</a>
     <span>© 2026 · mit</span>
   </div>
 </footer>
+
+<div class="push-toast" id="push-toast" role="status" aria-live="polite"></div>
 
 <dialog class="subscribe-dialog" id="subscribe-dialog" aria-labelledby="dialog-title">
   <div class="dialog-head">

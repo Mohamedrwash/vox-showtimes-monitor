@@ -36,3 +36,29 @@ create policy "anyone may delete a track"
 
 create index if not exists tracks_slug_day_idx on public.tracks (slug, day);
 create index if not exists tracks_client_idx on public.tracks (client_id);
+
+-- ---------------------------------------------------------------------
+-- push_state — per-browser web-push flag, written by the site when the
+-- visitor enables/disables browser notifications. The admin page uses it
+-- to show who gets browser pings. Public by design (same model as tracks).
+-- ---------------------------------------------------------------------
+
+create table if not exists public.push_state (
+  client_id text primary key,          -- same per-browser id as tracks
+  enabled boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.push_state enable row level security;
+
+create policy "push_state public read"
+  on public.push_state for select using (true);
+
+create policy "push_state public insert"
+  on public.push_state for insert with check (true);
+
+create policy "push_state public update"
+  on public.push_state for update using (true) with check (true);
+
+create policy "push_state public delete"
+  on public.push_state for delete using (true);

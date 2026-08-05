@@ -40,16 +40,90 @@
 
   var DAYS = dayOptions();
 
+  // ---- browser notifications (bell) ------------------------------
+
+  var bellBtn = document.getElementById('nav-bell');
+  var bellLabel = document.getElementById('nav-bell-label');
+  var pushToast = document.getElementById('push-toast');
+  var toastTimer = null;
+
+  function recordPushState (enabled) {
+    if (!SUPABASE_URL) return;
+    return fetch(SUPABASE_URL + '/rest/v1/push_state?on_conflict=client_id', {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({
+        client_id: clientId(),
+        enabled: enabled,
+        updated_at: new Date().toISOString()
+      })
+    }).catch(function () {});
+  }
+
+  function renderBell () {
+    if (!bellBtn) return;
+    if (window.VoxPush.state.enabled) {
+      bellBtn.dataset.state = 'on';
+      bellLabel.textContent = 'notify on';
+      bellBtn.title = 'browser notifications on - click to turn off';
+      bellBtn.setAttribute('aria-label', 'turn off browser notifications');
+    } else {
+      bellBtn.dataset.state = 'off';
+      bellLabel.textContent = 'notify';
+      bellBtn.title = window.VoxPush.state.reason
+        ? 'notifications unavailable (' + window.VoxPush.state.reason + ')'
+        : 'enable browser notifications';
+      bellBtn.setAttribute('aria-label', 'enable browser notifications');
+    }
+  }
+
+  function showToast (text) {
+    if (!pushToast) return;
+    pushToast.textContent = text;
+    pushToast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { pushToast.classList.remove('show'); }, 4000);
+  }
+
+  function toggleBell () {
+    if (window.VoxPush.state.enabled) {
+      window.VoxPush.disable();
+      recordPushState(false);
+      renderBell();
+      return;
+    }
+    bellBtn.disabled = true;
+    window.VoxPush.enable().then(function () {
+      recordPushState(true);
+      showToast('browser notifications on');
+    }).catch(function () {
+      showToast('notifications off - ' + window.VoxPush.state.reason);
+    }).then(function () {
+      bellBtn.disabled = false;
+      renderBell();
+    });
+  }
+
+  function offerNotifications () {
+    // First track: prompt for browser notifications if the browser hasn't
+    // decided yet. Never re-prompt after a denial.
+    if (!window.VoxPush.state.supported) return;
+    if (Notification.permission !== 'default') return;
+    window.VoxPush.enable().then(function () {
+      recordPushState(true);
+    }).catch(function () {
+      recordPushState(false);
+    }).then(renderBell);
+  }
+
   function $ (id) { return document.getElementById(id); }
 
-  function clientId () {
-    var id = localStorage.getItem('voxwatch_client_id');
-    if (!id) {
-      id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('anon-' + Math.random().toString(36).slice(2));
-      localStorage.setItem('voxwatch_client_id', id);
-    }
-    return id;
-  }
+  function clientId () { return window.VoxPush.clientId(); }
 
   function dayOptions () {
     var out = [{ value: '', label: 'any' }];
@@ -218,6 +292,7 @@
   function toggleTrack (slug, enable) {
     var film = catalog.find(function (f) { return f.slug === slug; });
     if (enable) {
+      offerNotifications();
       var day = selectedDays[slug] || '';
       tracked[slug] = day;
       localStorage.setItem('voxwatch_tracks', JSON.stringify(tracked));
@@ -347,6 +422,20 @@
   }
 
   function init () {
+    if (bellBtn) bellBtn.addEventListener('click', toggleBell);
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', function (e) {
+        if (e.data && e.data.type === 'voxwatch-push-shown') {
+          showToast('pinged: ' + e.data.title);
+        }
+      });
+    }
+
+    window.VoxPush.restore().then(function () {
+      renderBell();
+    });
+
     // restore my tracks from localStorage (optimistic UI, server re-syncs)
     try {
       var cache = JSON.parse(localStorage.getItem('voxwatch_tracks') || '{}');

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>voxwatch · admin</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0&family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/admin.css">
+<script defer src="js/config.js"></script>
+<script defer src="js/push.js"></script>
+<script defer src="js/admin.js"></script>
+</head>
+<body class="admin-body">
+
+<main class="admin-wrap">
+
+  <p class="eyebrow">00 · command deck</p>
+  <h1 class="admin-title">voxwatch · admin</h1>
+
+  <section class="admin-card" id="admin-gate">
+    <h2 class="admin-h2">unlock</h2>
+    <p class="admin-note">passcode is set in <span class="mono-inline">site/js/config.js</span>
+      (<span class="mono-inline">VOXWATCH_ADMIN.passcode</span>). it's a soft gate — see the comment there.</p>
+    <form id="gate-form" class="admin-form">
+      <input class="admin-input" id="gate-pass" type="password" autocomplete="current-password"
+             placeholder="passcode" aria-label="admin passcode">
+      <button class="btn btn-primary" type="submit">unlock</button>
+    </form>
+    <p class="admin-msg" id="gate-msg"></p>
+  </section>
+
+  <section class="admin-card" id="admin-panel" hidden>
+
+    <div class="admin-stats">
+      <div class="admin-stat"><span class="admin-stat-k" id="st-users">–</span><span class="admin-stat-v">users</span></div>
+      <div class="admin-stat"><span class="admin-stat-k" id="st-tracks">–</span><span class="admin-stat-v">tracked films</span></div>
+      <div class="admin-stat"><span class="admin-stat-k" id="st-push">–</span><span class="admin-stat-v">browser notify on</span></div>
+      <div class="admin-stat"><span class="admin-stat-k" id="st-available">–</span><span class="admin-stat-v">films with showtimes</span></div>
+    </div>
+
+    <div class="admin-actions">
+      <button class="btn btn-primary" id="btn-test-self" type="button">test this browser</button>
+      <button class="btn btn-ghost" id="btn-test-all" type="button">test all users</button>
+      <button class="btn btn-ghost" id="btn-refresh" type="button">refresh</button>
+      <button class="btn btn-ghost" id="btn-lock" type="button">lock</button>
+    </div>
+
+    <p class="admin-msg" id="panel-msg"></p>
+    <div class="admin-msgs" id="admin-msgs" aria-live="polite"></div>
+
+    <div id="admin-users"></div>
+
+  </section>
+
+</main>
+
+</body>
+</html>
