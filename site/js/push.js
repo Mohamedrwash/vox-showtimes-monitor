@@ -56,6 +56,23 @@
       });
   }
 
+  function registerAtNtfy (sub) {
+    var j = sub.toJSON();
+    return fetch(NTFY_SERVER + '/v1/webpush', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        endpoint: j.endpoint,
+        p256dh: j.keys.p256dh,
+        auth: j.keys.auth,
+        topics: [userTopic()]
+      })
+    }).then(function (r) {
+      if (!r.ok) { state.reason = 'register'; throw state.reason; }
+      return sub;
+    });
+  }
+
   function enable () {
     state.reason = '';
     if (!state.supported) { state.reason = 'unsupported'; return Promise.reject(state.reason); }
@@ -76,20 +93,7 @@
         });
       });
     }).then(function (sub) {
-      var j = sub.toJSON();
-      return fetch(NTFY_SERVER + '/v1/webpush', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          endpoint: j.endpoint,
-          p256dh: j.keys.p256dh,
-          auth: j.keys.auth,
-          topics: [userTopic()]
-        })
-      }).then(function (r) {
-        if (!r.ok) { state.reason = 'register'; throw state.reason; }
-        return sub;
-      });
+      return registerAtNtfy(sub);
     }).then(function () {
       state.enabled = true;
       localStorage.setItem('voxwatch_push', 'on');
@@ -116,7 +120,14 @@
     return navigator.serviceWorker.getRegistration().then(function (reg) {
       if (!reg) { localStorage.removeItem('voxwatch_push'); return false; }
       return reg.pushManager.getSubscription().then(function (sub) {
-        if (sub) { state.enabled = true; return true; }
+        if (sub) {
+          // ntfy may have dropped its copy of the registration (e.g. after
+          // push-service failures); re-register idempotently on every visit.
+          return registerAtNtfy(sub).catch(function () {}).then(function () {
+            state.enabled = true;
+            return true;
+          });
+        }
         localStorage.removeItem('voxwatch_push');
         return enable().then(function () { return true; }).catch(function () { return false; });
       });
