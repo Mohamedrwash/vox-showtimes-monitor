@@ -58,18 +58,35 @@
 
   function registerAtNtfy (sub) {
     var j = sub.toJSON();
-    return fetch(NTFY_SERVER + '/v1/webpush', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        endpoint: j.endpoint,
-        p256dh: j.keys.p256dh,
-        auth: j.keys.auth,
-        topics: [userTopic()]
-      })
-    }).then(function (r) {
-      if (!r.ok) { state.reason = 'register'; throw state.reason; }
-      return sub;
+    var body = JSON.stringify({
+      endpoint: j.endpoint,
+      p256dh: j.keys.p256dh,
+      auth: j.keys.auth,
+      topics: [userTopic()]
+    });
+    var tried = false;
+    function post () {
+      return fetch(NTFY_SERVER + '/v1/webpush', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body
+      }).then(function (r) {
+        if (!r.ok) {
+          state.reason = 'ntfy error ' + r.status + ', try again later';
+          throw state.reason;
+        }
+        state.reason = '';
+        return sub;
+      }, function () {
+        state.reason = 'ntfy unreachable, try again later';
+        throw state.reason;
+      });
+    }
+    // ntfy.sh web-push registration is flaky (transient 500s); retry once.
+    return post().catch(function (err) {
+      if (tried) throw err;
+      tried = true;
+      return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(post);
     });
   }
 
