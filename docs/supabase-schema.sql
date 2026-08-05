@@ -62,3 +62,32 @@ create policy "push_state public update"
 
 create policy "push_state public delete"
   on public.push_state for delete using (true);
+
+-- ---------------------------------------------------------------------
+-- devices — per-browser device info (phone / tablet / computer + browser
+-- name + device model), written by the site on every visit. The admin
+-- page groups users by device and shows model + browser. Public by
+-- design (same model as tracks).
+-- ---------------------------------------------------------------------
+
+create table if not exists public.devices (
+  client_id text primary key,          -- same per-browser id as tracks
+  device_type text not null default 'desktop', -- mobile | tablet | desktop
+  browser text not null default 'other',       -- chrome | edge | firefox | safari | samsung | opera | other
+  device_model text not null default '',       -- e.g. "SM-S928B" or "iPhone"
+  updated_at timestamptz not null default now()
+);
+
+alter table public.devices enable row level security;
+
+create policy "devices public read"
+  on public.devices for select using (true);
+
+create policy "devices public insert"
+  on public.devices for insert with check (true);
+
+create policy "devices public update"
+  on public.devices for update using (true) with check (true);
+
+create policy "devices public delete"
+  on public.devices for delete using (true);

@@ -20,6 +20,7 @@
 
   var tracks = [];
   var pushStates = {};
+  var devices = {};
   var showtimes = null;
 
   function $ (id) { return document.getElementById(id); }
@@ -52,6 +53,11 @@
     });
   }
 
+  var BROWSER_NAMES = {
+    chrome: 'chrome', edge: 'edge', firefox: 'firefox', safari: 'safari',
+    samsung: 'samsung internet', opera: 'opera', other: 'browser?'
+  };
+
   function dayLabel (v) {
     if (!v) return 'any day';
     var s = String(v);
@@ -72,12 +78,15 @@
   function loadAll () {
     var p1 = sb('GET', 'tracks?select=*&order=created_at.asc').then(function (r) { return r.json(); });
     var p2 = sb('GET', 'push_state?select=*').then(function (r) { return r.json(); });
-    var p3 = fetch('data/showtimes.json').then(function (r) { return r.ok ? r.json() : null; });
-    return Promise.all([p1, p2, p3]).then(function (res) {
+    var p3 = sb('GET', 'devices?select=*').then(function (r) { return r.ok ? r.json() : []; });
+    var p4 = fetch('data/showtimes.json').then(function (r) { return r.ok ? r.json() : null; });
+    return Promise.all([p1, p2, p3, p4]).then(function (res) {
       tracks = res[0] || [];
       pushStates = {};
       (res[1] || []).forEach(function (p) { pushStates[p.client_id] = p; });
-      showtimes = res[2];
+      devices = {};
+      (res[2] || []).forEach(function (d) { devices[d.client_id] = d; });
+      showtimes = res[3];
     });
   }
 
@@ -102,30 +111,67 @@
       return;
     }
 
+    var groups = {
+      phone: [],
+      computer: []
+    };
     uids.forEach(function (uid) {
-      var films = users[uid].slice().sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
-      var push = pushStates[uid];
-      var card = document.createElement('div');
-      card.className = 'admin-user';
+      var dev = devices[uid];
+      var group = (dev && (dev.device_type === 'mobile' || dev.device_type === 'tablet')) ? 'phone' : 'computer';
+      groups[group].push(uid);
+    });
+    function lastSeen (id) { var d = devices[id]; return d && d.updated_at ? d.updated_at : ''; }
+    groups.phone.sort(function (a, b) { return lastSeen(b).localeCompare(lastSeen(a)); });
+    groups.computer.sort(function (a, b) { return lastSeen(b).localeCompare(lastSeen(a)); });
 
-      var head = document.createElement('div');
-      head.className = 'admin-user-head';
-      var who = document.createElement('div');
-      who.className = 'admin-user-who';
-      var name = document.createElement('span');
-      name.className = 'admin-user-id mono-inline';
-      name.textContent = shortId(uid);
-      name.title = uid;
-      var pushChip = document.createElement('span');
-      pushChip.className = 'admin-push ' + (push && push.enabled ? 'on' : 'off');
-      pushChip.textContent = push && push.enabled ? 'browser notify · on' : 'browser notify · off';
-      who.appendChild(name);
-      who.appendChild(pushChip);
-      var seen = document.createElement('span');
-      seen.className = 'admin-user-seen';
-      seen.textContent = 'last seen ' + fmtTime(push ? push.updated_at : null);
-      head.appendChild(who);
-      head.appendChild(seen);
+    var groupDefs = [
+      { key: 'phone', title: 'phones', empty: 'no phones tracking films yet.' },
+      { key: 'computer', title: 'computers', empty: 'no computers tracking films yet.' }
+    ];
+    groupDefs.forEach(function (g) {
+      var uids2 = groups[g.key];
+      var h = document.createElement('h2');
+      h.className = 'admin-h2 admin-group-h2';
+      h.textContent = g.title + ' · ' + uids2.length;
+      usersBox.appendChild(h);
+      if (!uids2.length) {
+        var note = document.createElement('p');
+        note.className = 'admin-note';
+        note.textContent = g.empty;
+        usersBox.appendChild(note);
+        return;
+      }
+
+      uids2.forEach(function (uid) {
+        var films = users[uid].slice().sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+        var push = pushStates[uid];
+        var dev = devices[uid];
+        var card = document.createElement('div');
+        card.className = 'admin-user';
+
+        var head = document.createElement('div');
+        head.className = 'admin-user-head';
+        var who = document.createElement('div');
+        who.className = 'admin-user-who';
+        var name = document.createElement('span');
+        name.className = 'admin-user-id mono-inline';
+        name.textContent = shortId(uid);
+        name.title = uid;
+        var devChip = document.createElement('span');
+        devChip.className = 'admin-device';
+        devChip.textContent = (dev ? (dev.device_model || '—') : '—') +
+          ' · ' + (dev ? (BROWSER_NAMES[dev.browser] || dev.browser) : 'browser?');
+        var pushChip = document.createElement('span');
+        pushChip.className = 'admin-push ' + (push && push.enabled ? 'on' : 'off');
+        pushChip.textContent = push && push.enabled ? 'browser notify · on' : 'browser notify · off';
+        who.appendChild(name);
+        who.appendChild(devChip);
+        who.appendChild(pushChip);
+        var seen = document.createElement('span');
+        seen.className = 'admin-user-seen';
+        seen.textContent = 'last seen ' + fmtTime(dev ? dev.updated_at : (push ? push.updated_at : null));
+        head.appendChild(who);
+        head.appendChild(seen);
 
       var list = document.createElement('ul');
       list.className = 'admin-film-list';
@@ -152,9 +198,10 @@
         list.appendChild(li);
       });
 
-      card.appendChild(head);
-      card.appendChild(list);
-      usersBox.appendChild(card);
+        card.appendChild(head);
+        card.appendChild(list);
+        usersBox.appendChild(card);
+      });
     });
   }
 

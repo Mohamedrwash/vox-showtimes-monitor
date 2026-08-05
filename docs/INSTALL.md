@@ -15,7 +15,8 @@ voxwatch runs two ways:
 Sign up free at https://supabase.com, create a project, then open the **SQL editor**
 and run the whole of [`docs/supabase-schema.sql`](supabase-schema.sql). It creates the
 `tracks` table and its RLS policies, plus the `push_state` table (browser-push flag,
-used by the admin page).
+used by the admin page) and the `devices` table (phone/pc + browser + model, written
+on every visit for the admin page).
 
 The table is **public-by-design**: site visitors track films without accounts. The
 RLS policies allow anyone read/insert/update/delete - the equivalent of the old

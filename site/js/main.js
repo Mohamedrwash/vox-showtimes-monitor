@@ -125,6 +125,70 @@
 
   function clientId () { return window.VoxPush.clientId(); }
 
+  // ---- visitor device info (admin groups users by phone / pc) ------
+
+  function detectDevice () {
+    var ua = navigator.userAgent || '';
+    var data = navigator.userAgentData;
+    var type = 'desktop';
+    var model = '';
+    var browser = 'other';
+
+    if (data && data.mobile) type = 'mobile';
+    if (data && data.brands) {
+      var brand = data.brands.map(function (b) { return b.brand; }).join(' ');
+      if (brand.indexOf('Firefox') >= 0) browser = 'firefox';
+      else if (brand.indexOf('Edge') >= 0) browser = 'edge';
+      else if (brand.indexOf('Opera') >= 0) browser = 'opera';
+      else if (brand.indexOf('Samsung') >= 0) browser = 'samsung';
+      else if (brand.indexOf('Chrome') >= 0) browser = 'chrome';
+    }
+
+    if (/iPhone/i.test(ua)) { type = 'mobile'; model = 'iPhone'; }
+    else if (/iPad/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1)) {
+      type = 'tablet'; model = 'iPad';
+    } else if (/Android/i.test(ua)) {
+      type = 'mobile';
+      var m = ua.match(/;\s*([^;)]+)\s+Build\//);
+      if (m) model = m[1].trim();
+    } else if (/Windows/i.test(ua)) model = 'Windows';
+    else if (/Macintosh/i.test(ua)) model = 'Mac';
+    else if (/Linux/i.test(ua)) model = 'Linux';
+
+    if (browser === 'other') {
+      if (/Edg\//i.test(ua)) browser = 'edge';
+      else if (/OPR\//i.test(ua)) browser = 'opera';
+      else if (/SamsungBrowser/i.test(ua)) browser = 'samsung';
+      else if (/CriOS/i.test(ua)) browser = 'chrome';
+      else if (/FxiOS/i.test(ua)) browser = 'firefox';
+      else if (/Firefox\//i.test(ua)) browser = 'firefox';
+      else if (/Safari\//i.test(ua)) browser = 'safari';
+    }
+
+    return { type: type, model: model, browser: browser };
+  }
+
+  function recordDevice () {
+    if (!SUPABASE_URL) return;
+    var d = detectDevice();
+    return fetch(SUPABASE_URL + '/rest/v1/devices?on_conflict=client_id', {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({
+        client_id: clientId(),
+        device_type: d.type,
+        browser: d.browser,
+        device_model: d.model,
+        updated_at: new Date().toISOString()
+      })
+    }).catch(function () {});
+  }
+
   function dayOptions () {
     var out = [{ value: '', label: 'any' }];
     var d = new Date();
@@ -435,6 +499,8 @@
     window.VoxPush.restore().then(function () {
       renderBell();
     });
+
+    recordDevice();
 
     // restore my tracks from localStorage (optimistic UI, server re-syncs)
     try {
