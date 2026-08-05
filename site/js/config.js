@@ -11,5 +11,5 @@ window.VOXWATCH_SUPABASE = {
 // casual visitors but ships with the site, so treat it as obfuscation, not
 // real security. Leave empty to disable the admin page entirely.
 window.VOXWATCH_ADMIN = {
-  passcode: ''
+  passcode: 'Medo1111'
 };
