@@ -96,8 +96,11 @@ while IFS= read -r film; do
 
     html=$(fetch_url "$url") || { log "$slug: unreachable — skipping"; continue; }
 
+    # grep exits 1 when the page has no day-tabs markup (Vox intermittently
+    # serves variant/bot-check pages) — that would kill the run under
+    # `set -o pipefail`, so treat it as "no tabs" and skip this film.
     day_tabs=$(echo "$html" | grep -o 'href="/movies/[^"]*?d&#x3D;[0-9]\{8\}#showtimes">[^<]*</a>' \
-        | sed 's/.*d&#x3D;\([0-9]*\)#showtimes">\([^<]*\)<\/a>/\1|\2/')
+        | sed 's/.*d&#x3D;\([0-9]*\)#showtimes">\([^<]*\)<\/a>/\1|\2/' || true)
     if [ -z "$day_tabs" ]; then
         log "$slug: no day tabs found"
         continue
