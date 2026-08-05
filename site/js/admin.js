@@ -164,8 +164,8 @@
     var topic = 'voxwatch-u-' + uid;
     var film = track ? (track.title || track.slug) : 'voxwatch';
     var click = track && track.url ? track.url : SITE_URL;
-    var title = 'voxwatch · test';
-    var message = '[test] you track "' + film + '" — this is a test ping from the admin page. everything works.';
+    var title = 'voxwatch - test';
+    var message = '[test] you track "' + film + '" - this is a test ping from the admin page. everything works.';
     msg(panelMsg, 'sending test ping to ' + shortId(uid) + ' (' + topic + ')…');
     ntfyPublish(topic, title, message, click).then(function (r) {
       if (r.ok) {
@@ -181,7 +181,7 @@
     msg(panelMsg, 'enabling notifications for this browser…');
     window.VoxPush.enable().then(function () {
       var topic = window.VoxPush.userTopic();
-      return ntfyPublish(topic, 'voxwatch · test', '[test] this browser is receiving pushes.', SITE_URL).then(function (r) {
+      return ntfyPublish(topic, 'voxwatch - test', '[test] this browser is receiving pushes.', SITE_URL).then(function (r) {
         if (r.ok) {
           msg(panelMsg, 'sent ✓ — check this browser for the notification (' + topic + ')', true);
         } else {
@@ -203,7 +203,7 @@
     msg(panelMsg, 'pinging ' + target.length + ' user(s)…');
     target.forEach(function (uid, i) {
       setTimeout(function () {
-        ntfyPublish('voxwatch-u-' + uid, 'voxwatch · test',
+        ntfyPublish('voxwatch-u-' + uid, 'voxwatch - test',
           '[test] broadcast test ping from the admin page.', SITE_URL)
           .then(function (r) { flash((r.ok ? '✓ ' : '✗ ') + shortId(uid), r.ok); })
           .catch(function () { flash('✗ ' + shortId(uid), false); });
