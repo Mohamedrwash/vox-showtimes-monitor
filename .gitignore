@@ -5,6 +5,9 @@
 .fail_flag*
 .last_digest*
 .json_tmp/
+.json_tmp.*/
+.control_last_id
+.picked_slugs
 
 # Local configuration - contains your credentials and watchlist
 monitor.conf

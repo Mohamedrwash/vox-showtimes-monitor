@@ -21,6 +21,14 @@ A config-driven bash script that:
 - Publishes every film's alerts to its own public ntfy topic (`voxwatch-<slug>`)
   â€” this is the visitor channel â€” and mirrors them to the owner's personal
   channels (Pushover / Telegram / Discord / Email / Gotify / private ntfy topic)
+- **Visitor picks**: the site renders the FULL Vox catalog (`site/data/catalog.json`,
+  scraped from the Vox homepage "What's On" section via scripts/update-catalog.sh).
+  Clicking *track* on a film publishes `PICK <slug>` / `UNPICK <slug>` to a public
+  ntfy control topic (`CONTROL_TOPIC` in monitor.conf). The monitor polls that topic
+  each run (`?poll=1&since=<time>`, cursor in `src/.control_last_id`; ntfy v2 ids are
+  non-sortable strings, so track cursor by message time + id) and merges picks into
+  the watchlist. Picks persist in `src/.picked_slugs` (slug|name|cinema|url per line)
+  so films stay watched across runs; picked films use DEFAULT_CINEMA.
 - Writes `site/data/showtimes.json` after every run (atomic) so the voxwatch
   site is live while the monitor runs
 - Ships with a static site (index.html + css + js) that renders the watchlist

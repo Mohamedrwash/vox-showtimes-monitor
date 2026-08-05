@@ -1,13 +1,16 @@
 #!/bin/bash
 
 # ============================================================
-#  Vox Showtimes Monitor - multi-film
+#  Vox Showtimes Monitor - multi-film + visitor picks
 # ------------------------------------------------------------
 #  Watches ANY number of Vox Cinemas movie pages and alerts
 #  when showtimes become available.
 #
 #  - Each film in movies.conf gets its own public ntfy topic
 #      (voxwatch-<slug>) that site visitors can subscribe to.
+#  - Visitor picks: site publishes PICK/UNPICK to a control
+#      topic; monitor polls it and dynamically adds/removes
+#      films to the watchlist.
 #  - Config-driven: works for ANY movie and ANY cinema.
 #  - Multi-platform notifications (all optional, most free):
 #      Pushover | Telegram | Discord | Email | ntfy.sh | Gotify
@@ -50,8 +53,11 @@ source "$CONF_FILE"
 # State / log files live next to the script
 LOG_FILE="$SCRIPT_DIR/vox_showtimes.log"
 HEARTBEAT_FILE="$SCRIPT_DIR/.heartbeat"
-JSON_TMP="$SCRIPT_DIR/.json_tmp"
+CONTROL_LAST_ID_FILE="$SCRIPT_DIR/.control_last_id"
+PICKED_FILE="$SCRIPT_DIR/.picked_slugs"
+JSON_TMP="$SCRIPT_DIR/.json_tmp.$$"
 SITE_DATA_DIR="${SITE_DATA_DIR:-$SCRIPT_DIR/../site/data}"
+CATALOG_FILE="${SITE_DATA_DIR}/catalog.json"
 
 # ---------- helpers --------------------------------------------------
 
@@ -93,6 +99,105 @@ extract_available() {
             if (link!="" && time!="") print time "|" format "|" link
         }
     '
+}
+
+# ---------- control topic (visitor picks) -----------------------------
+
+# poll_control_topic
+# Fetches messages from the ntfy control topic since the last seen
+# message (time-based cursor, ntfy v2 message ids are not sortable).
+# Updates CONTROL_LAST_ID_FILE ("<time> <id>") and prints commands:
+#   PICK slug
+#   UNPICK slug
+poll_control_topic() {
+    [ "${USE_NTFY:-false}" != true ] && return 0
+    [ -n "${CONTROL_TOPIC:-}" ] || return 0
+    [ -n "${NTFY_SERVER:-}" ] || return 0
+
+    local since=0 cur_id=""
+    if [ -f "$CONTROL_LAST_ID_FILE" ]; then
+        read -r since cur_id < "$CONTROL_LAST_ID_FILE" 2>/dev/null
+        [[ "$since" =~ ^[0-9]+$ ]] || since=0
+    fi
+
+    # poll=1 makes ntfy return the replay and close the stream.
+    # since=<time> is inclusive, so the cursor message is re-delivered
+    # and must be skipped by id.
+    local url="${NTFY_SERVER}/${CONTROL_TOPIC}/json?poll=1&since=${since}"
+
+    local resp
+    resp=$(curl -s --max-time 20 "$url")
+    [ -z "$resp" ] && return 0
+
+    # Parse JSON: each message has "id" (string), "time" (unix seconds),
+    # "message" (body). Expected body: "PICK slug" or "UNPICK slug".
+    echo "$resp" | awk -v since="$since" -v cur_id="$cur_id" '
+        BEGIN { RS="}"; max_time=since; max_id=cur_id }
+        {
+            id=""; t=""
+            if (match($0, /"id":"([^"]+)"/, m)) id=m[1]
+            if (match($0, /"time":([0-9]+)/, m)) t=m[1]
+            if (t != "" && (t > max_time || (t == max_time && id != max_id))) {
+                max_time=t; max_id=id
+            }
+        }
+        /"message":/ {
+            if (t == "" || id == "") next
+            if (t < since || (t == since && id == cur_id)) next
+            msg=$0
+            gsub(/.*"message":"/, "", msg)
+            gsub(/".*/, "", msg)
+            if (msg ~ /^PICK /) {
+                slug=substr(msg, 6)
+                gsub(/[ \t\r\n]/, "", slug)
+                if (slug != "") print "PICK " slug
+            }
+            else if (msg ~ /^UNPICK /) {
+                slug=substr(msg, 8)
+                gsub(/[ \t\r\n]/, "", slug)
+                if (slug != "") print "UNPICK " slug
+            }
+        }
+        END { if (max_time > since || (max_time == since && max_id != cur_id)) print "LAST " max_time " " max_id }
+    ' | while IFS= read -r line; do
+        case "$line" in
+            PICK\ *) echo "PICK ${line#PICK }" ;;
+            UNPICK\ *) echo "UNPICK ${line#UNPICK }" ;;
+            LAST\ *) echo "${line#LAST }" > "$CONTROL_LAST_ID_FILE" ;;
+        esac
+    done
+}
+
+# get_catalog_info <slug>
+# Reads catalog.json and prints "title|url" for a slug, or empty if not found.
+get_catalog_info() {
+    local slug="$1"
+    [ -f "$CATALOG_FILE" ] || return 1
+    awk -v s="$slug" '
+        BEGIN { RS="}"; FS="\n" }
+        /"slug":/ && index($0, s) {
+            title=""
+            url=""
+            for (i=1; i<=NF; i++) {
+                f=$i
+                if (f ~ /"title":/) {
+                    gsub(/.*"title":"/, "", f)
+                    gsub(/".*/, "", f)
+                    title=f
+                }
+                g=$i
+                if (g ~ /"url":/) {
+                    gsub(/.*"url":"/, "", g)
+                    gsub(/".*/, "", g)
+                    url=g
+                }
+            }
+            if (title != "" && url != "") {
+                print title "|" url
+            }
+            exit
+        }
+    ' "$CATALOG_FILE"
 }
 
 # ---------- notification channels -----------------------------------
@@ -216,6 +321,10 @@ SLUGS=()
 NAMES=()
 CINEMAS=()
 URLS=()
+PICKED_SLUGS=()
+PICKED_NAMES=()
+PICKED_CINEMAS=()
+PICKED_URLS=()
 
 load_movies() {
     while IFS='|' read -r slug name cinema url; do
@@ -235,6 +344,91 @@ load_movies() {
         echo "Format per line: slug|display-name|cinema|url"
         exit 1
     fi
+}
+
+# load_picked / save_picked
+# Persist the visitor-picked watchlist so picks survive across runs
+# (the control-topic cursor only carries NEW messages).
+load_picked() {
+    [ -f "$PICKED_FILE" ] || return 0
+    while IFS='|' read -r slug name cinema url; do
+        slug=$(echo "$slug" | tr -d ' \r')
+        name=$(echo "$name" | tr -d '\r')
+        cinema=$(echo "$cinema" | tr -d '\r')
+        url=$(echo "$url" | tr -d ' \r')
+        case "$slug" in ''|'#'*) continue ;; esac
+        PICKED_SLUGS+=("$slug")
+        PICKED_NAMES+=("$name")
+        PICKED_CINEMAS+=("$cinema")
+        PICKED_URLS+=("$url")
+    done < "$PICKED_FILE"
+}
+
+save_picked() {
+    local tmp="$PICKED_FILE.tmp"
+    : > "$tmp"
+    for i in "${!PICKED_SLUGS[@]}"; do
+        echo "${PICKED_SLUGS[$i]}|${PICKED_NAMES[$i]}|${PICKED_CINEMAS[$i]}|${PICKED_URLS[$i]}" >> "$tmp"
+    done
+    mv "$tmp" "$PICKED_FILE"
+}
+
+# process_control_topic
+# Polls the control topic, updates PICKED_* arrays based on PICK/UNPICK.
+process_control_topic() {
+    while IFS=' ' read -r cmd slug; do
+        case "$cmd" in
+            PICK)
+                if [ -z "$slug" ]; then continue; fi
+                # Skip if already in movies.conf
+                local found=0
+                for s in "${SLUGS[@]}"; do [ "$s" = "$slug" ] && found=1; done
+                for s in "${PICKED_SLUGS[@]}"; do [ "$s" = "$slug" ] && found=1; done
+                [ $found -eq 1 ] && { log_message "PICK $slug: already in watchlist"; continue; }
+
+                # Look up title/url from catalog
+                local info
+                info=$(get_catalog_info "$slug")
+                if [ -z "$info" ]; then
+                    log_message "PICK $slug: not in catalog.json"
+                    continue
+                fi
+                local name cinema
+                name=$(echo "$info" | cut -d'|' -f1)
+                local url
+                url=$(echo "$info" | cut -d'|' -f2)
+                cinema="${DEFAULT_CINEMA:-City Centre Almaza}"
+
+                PICKED_SLUGS+=("$slug")
+                PICKED_NAMES+=("$name")
+                PICKED_CINEMAS+=("$cinema")
+                PICKED_URLS+=("$url")
+                log_message "PICK $slug: added to watchlist ($name @ $cinema)"
+                ;;
+            UNPICK)
+                if [ -z "$slug" ]; then continue; fi
+                local idx=-1
+                for i in "${!PICKED_SLUGS[@]}"; do
+                    if [ "${PICKED_SLUGS[$i]}" = "$slug" ]; then
+                        idx=$i
+                        break
+                    fi
+                done
+                [ $idx -eq -1 ] && { log_message "UNPICK $slug: not in picked list"; continue; }
+                unset PICKED_SLUGS[$idx]
+                unset PICKED_NAMES[$idx]
+                unset PICKED_CINEMAS[$idx]
+                unset PICKED_URLS[$idx]
+                log_message "UNPICK $slug: removed from watchlist"
+                ;;
+        esac
+    done < <(poll_control_topic)
+
+    # Compact arrays (remove gaps from unset)
+    PICKED_SLUGS=("${PICKED_SLUGS[@]}")
+    PICKED_NAMES=("${PICKED_NAMES[@]}")
+    PICKED_CINEMAS=("${PICKED_CINEMAS[@]}")
+    PICKED_URLS=("${PICKED_URLS[@]}")
 }
 
 # ---------- heartbeat -------------------------------------------------
@@ -381,6 +575,14 @@ write_site_data() {
         first=0
         films_json="$films_json$(cat "$fjson")"
     done
+    # Also include picked films
+    for i in "${!PICKED_SLUGS[@]}"; do
+        fjson="$JSON_TMP/${PICKED_SLUGS[$i]}.json"
+        [ -f "$fjson" ] || continue
+        [ $first -eq 1 ] || films_json="$films_json,"
+        first=0
+        films_json="$films_json$(cat "$fjson")"
+    done
     {
         printf '{\n  "last_synced": "%s",\n  "films": [\n' "$(date +%Y-%m-%dT%H:%M:%S%z)"
         printf '%s\n' "$films_json" | sed 's/^{/    {/'
@@ -424,27 +626,66 @@ run_digest() {
         notify_all "📅 DAILY DIGEST - $name at $cinema\n\n$msg" \
             "$name Daily Digest" "$url" "$topic"
     done
+
+    # Also digest for picked films
+    for i in "${!PICKED_SLUGS[@]}"; do
+        slug="${PICKED_SLUGS[$i]}"
+        name="${PICKED_NAMES[$i]}"
+        cinema="${PICKED_CINEMAS[$i]}"
+        url="${PICKED_URLS[$i]}"
+        topic="voxwatch-$slug"
+        digest_file="$SCRIPT_DIR/.last_digest_$slug"
+        [ -f "$digest_file" ] && [ "$(cat "$digest_file")" = "$today" ] && continue
+
+        local msg=""
+        for d in "$today" "$tomorrow"; do
+            html=$(fetch_url "$url?d=$d")
+            [ -z "$html" ] && { msg="${msg}Day $d: unreachable\n"; continue; }
+            avail=$(extract_available "$html" "$cinema")
+            if [ -n "$avail" ]; then
+                times=$(echo "$avail" | cut -d'|' -f1 | sort | tr '\n' ',' | sed 's/,$//')
+                msg="${msg}Day $d: $times\n"
+            else
+                msg="${msg}Day $d: none available\n"
+            fi
+        done
+
+        echo "$today" > "$digest_file"
+        notify_all "📅 DAILY DIGEST - $name at $cinema\n\n$msg" \
+            "$name Daily Digest" "$url" "$topic"
+    done
 }
 
 # ---------- main ------------------------------------------------------
 
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
-    echo "Vox Showtimes Monitor (multi-film)"
-    echo "  (no args) run one monitoring pass over movies.conf"
+    echo "Vox Showtimes Monitor (multi-film + visitor picks)"
+    echo "  (no args) run one monitoring pass over movies.conf + picks"
     echo "  digest    send the daily digest for all films"
     exit 0
 fi
 
+# Single-instance guard: skip if another run is in progress.
+exec 9>"/tmp/voxmonitor.$(id -u).lock"
+flock -n 9 || { echo "[$(date '+%Y-%m-%d %H:%M:%S')] another instance running; skipping"; exit 0; }
+
 load_movies
+load_picked
+process_control_topic
+save_picked
 mkdir -p "$JSON_TMP"
 
 [ "${1:-}" = "digest" ] && { run_digest; rm -rf "$JSON_TMP"; exit 0; }
 
-log_message "Starting multi-film check (${#SLUGS[@]} films)"
+log_message "Starting multi-film check (${#SLUGS[@]} films + ${#PICKED_SLUGS[@]} picked)"
 check_heartbeat
 
 for i in "${!SLUGS[@]}"; do
     check_film "${SLUGS[$i]}" "${NAMES[$i]}" "${CINEMAS[$i]}" "${URLS[$i]}"
+done
+
+for i in "${!PICKED_SLUGS[@]}"; do
+    check_film "${PICKED_SLUGS[$i]}" "${PICKED_NAMES[$i]}" "${PICKED_CINEMAS[$i]}" "${PICKED_URLS[$i]}"
 done
 
 write_site_data

@@ -1,308 +1,304 @@
-/* ============================================================
-   main.js · voxwatch
-   mixed data mode: fetch live showtimes.json (4s timeout),
-   fall back to the baked snapshot, then to the static noscript
-   ------------------------------------------------------------
-   sources: live · snapshot · offline
-   ============================================================ */
+// main.js — voxwatch catalog + live watchlist
+// Fetches catalog.json + showtimes.json, renders unified catalog,
+// handles track/untrack via ntfy control topic, dialog + QR + copy.
 
 (function () {
-  "use strict";
+  'use strict';
 
-  var DATA_URL = "data/showtimes.json";
-  var FETCH_TIMEOUT = 4000;
+  var CONTROL_TOPIC = 'voxwatch-control';
+  var NTFY_SERVER = 'https://ntfy.sh';
 
-  var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var renderedOnce = false;
+  var catalogLedger = document.getElementById('catalog-ledger');
+  var catalogEmpty = document.getElementById('catalog-empty');
+  var navStatus = document.getElementById('nav-status');
+  var statusText = document.querySelector('.status-text');
+  var sourceLine = document.getElementById('source-line');
+  var footerStatus = document.getElementById('footer-status');
+  var filmsCount = document.getElementById('c-films');
+  var syncText = document.getElementById('c-sync');
+  var dialog = document.getElementById('subscribe-dialog');
+  var dialogTitle = document.getElementById('dialog-title');
+  var dialogCinema = document.getElementById('dialog-cinema');
+  var dialogTimes = document.getElementById('dialog-times');
+  var dialogQR = document.getElementById('dialog-qr');
+  var dialogLink = document.getElementById('dialog-link');
+  var dialogTopic = document.getElementById('dialog-topic');
+  var dialogCopy = document.getElementById('dialog-copy');
+  var dialogClose = document.getElementById('dialog-close');
 
-  var $ = function (id) { return document.getElementById(id); };
+  var DATA_URL = 'data/showtimes.json';
+  var CATALOG_URL = 'data/catalog.json';
+  var SNAPSHOT = document.getElementById('snapshot-data');
+  var CATALOG_SNAPSHOT = document.getElementById('snapshot-catalog');
 
-  var navStatus = $("nav-status");
-  var statusText = navStatus.querySelector(".status-text");
-  var sourceLine = $("source-line");
-  var footerStatus = $("footer-status");
-  var ledger = $("ledger");
-  var ledgerEmpty = $("ledger-empty");
-  var dialogEl = $("subscribe-dialog");
+  var tracked = new Set(); // slugs of films the user has clicked "track"
+  var catalog = [];
+  var showtimes = null;
+  var sourceState = 'loading'; // 'live' | 'snapshot' | 'offline'
 
-  /* ---------- formatting ------------------------------------- */
+  function $ (id) { return document.getElementById(id); }
 
-  function formatTime(h24) {
-    var parts = h24.split(":");
-    var h = parseInt(parts[0], 10);
-    var m = parts[1] || "00";
-    var ampm = h >= 12 ? "pm" : "am";
-    h = h % 12 || 12;
-    return h + ":" + m + " " + ampm;
+  function formatSynced (ts) {
+    if (!ts) return '—';
+    var d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  function formatSynced(iso) {
-    var d = new Date(iso);
-    if (isNaN(d.getTime())) return "—";
-    var months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-    var hh = ("0" + d.getHours()).slice(-2);
-    var mm = ("0" + d.getMinutes()).slice(-2);
-    var day = ("0" + d.getDate()).slice(-2);
-    return day + " " + months[d.getMonth()] + " " + hh + ":" + mm;
-  }
-
-  /* ---------- data --------------------------------------------- */
-
-  function loadData() {
-    return new Promise(function (resolve, reject) {
-      var controller = new AbortController();
-      var timer = setTimeout(function () { controller.abort(); }, FETCH_TIMEOUT);
-      fetch(DATA_URL, { signal: controller.signal, headers: { Accept: "application/json" } })
-        .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
-        .then(function (data) { clearTimeout(timer); resolve(data); })
-        .catch(function (err) { clearTimeout(timer); reject(err); });
-    });
-  }
-
-  function snapshotData() {
-    var el = document.getElementById("snapshot-data");
-    if (!el || !el.textContent.trim()) return null;
-    try { return JSON.parse(el.textContent); } catch (e) { return null; }
-  }
-
-  /* ---------- rendering ---------------------------------------- */
-
-  function setStatus(source, data) {
+  function setStatus (source, data) {
     var count = data ? data.films.length : 0;
-    var label = count === 1 ? "1 film" : count + " films";
-    if (source === "live") {
-      navStatus.dataset.state = "live";
-      statusText.textContent = "live · " + label;
-      sourceLine.dataset.state = "live";
-      sourceLine.textContent = "live · synced " + formatSynced(data.last_synced) + " · eest";
-      footerStatus.textContent = "watcher: online";
-    } else if (source === "snapshot") {
-      navStatus.dataset.state = "snapshot";
-      statusText.textContent = "snapshot · " + label;
-      sourceLine.dataset.state = "snapshot";
-      sourceLine.textContent = "snapshot · " + formatSynced(data.last_synced) + " · watcher offline right now";
-      footerStatus.textContent = "watcher: offline";
+    var label = count === 1 ? '1 film' : count + ' films';
+    if (source === 'live') {
+      navStatus.dataset.state = 'live';
+      statusText.textContent = 'live · ' + label;
+      sourceLine.dataset.state = 'live';
+      sourceLine.textContent = 'live · synced ' + formatSynced(data.last_synced) + ' · eest';
+      footerStatus.textContent = 'watcher: online';
+    } else if (source === 'snapshot') {
+      navStatus.dataset.state = 'snapshot';
+      statusText.textContent = 'snapshot · ' + label;
+      sourceLine.dataset.state = 'snapshot';
+      sourceLine.textContent = 'snapshot · ' + formatSynced(data.last_synced) + ' · watcher offline right now';
+      footerStatus.textContent = 'watcher: offline';
     } else {
-      navStatus.dataset.state = "offline";
-      statusText.textContent = "offline";
-      sourceLine.dataset.state = "offline";
-      sourceLine.textContent = "offline · no data";
-      footerStatus.textContent = "watcher: unreachable";
+      navStatus.dataset.state = 'offline';
+      statusText.textContent = 'offline';
+      sourceLine.dataset.state = 'offline';
+      sourceLine.textContent = 'offline · no data';
+      footerStatus.textContent = 'watcher: unreachable';
     }
+    sourceState = source;
   }
 
-  function setStats(data) {
-    var n = data.films.length;
-    $("c-films").textContent = n;
-    $("stat-films").textContent = n;
-    $("c-sync").textContent = formatSynced(data.last_synced);
+  function setStats (data) {
+    var n = data ? data.films.length : 0;
+    filmsCount.textContent = n;
     var angle = Math.min(243, n * 24.3);
-    document.querySelector(".dial-needle").style.setProperty("--needle", angle + "deg");
+    document.querySelector('.dial-needle').style.setProperty('--needle', angle + 'deg');
+    syncText.textContent = formatSynced(data ? data.last_synced : '');
   }
 
-  function nextTimeLabel(film) {
-    for (var i = 0; i < film.days.length; i++) {
-      if (film.days[i].times.length) return formatTime(film.days[i].times[0].time);
+  function renderLedger (films, watchedMap) {
+    catalogLedger.innerHTML = '';
+    if (!films.length) {
+      catalogEmpty.textContent = 'no films in catalog';
+      return;
     }
-    return "—";
-  }
-
-  function renderLedger(films) {
-    ledgerEmpty.remove();
     var frag = document.createDocumentFragment();
-    films.forEach(function (film, i) {
-      var row = document.createElement("div");
-      row.className = "ledger-row" + (reducedMotion ? "" : " enter");
-      row.style.animationDelay = Math.min(i * 40, 320) + "ms";
+    films.forEach(function (film, idx) {
+      var slug = film.slug;
+      var watched = watchedMap && watchedMap[slug];
+      var row = document.createElement('div');
+      row.className = 'ledger-row' + (document.documentElement.classList.contains('reduce-motion') ? '' : ' enter');
+      row.style.animationDelay = Math.min(idx * 40, 320) + 'ms';
       row.tabIndex = 0;
-      row.setAttribute("role", "button");
-      row.setAttribute("aria-label", "subscribe to " + film.title);
+      row.setAttribute('role', 'button');
+      row.setAttribute('aria-label', 'track ' + film.title);
 
-      var title = document.createElement("span");
-      title.className = "film-title";
+      var title = document.createElement('span');
+      title.className = 'film-title';
       title.textContent = film.title;
 
-      var cinema = document.createElement("span");
-      cinema.className = "film-cinema";
-      cinema.textContent = film.cinema;
-
-      var next = document.createElement("span");
-      next.className = "film-next";
-      next.textContent = nextTimeLabel(film);
-
-      var status = document.createElement("span");
-      status.className = "ledger-status";
-      var dot = document.createElement("span");
-      dot.className = "ledger-dot";
-      dot.setAttribute("aria-hidden", "true");
+      var status = document.createElement('span');
+      status.className = 'ledger-status';
+      var dot = document.createElement('span');
+      dot.className = 'ledger-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      var label = document.createElement('span');
+      if (watched) {
+        label.textContent = 'watching';
+        status.classList.add('watching');
+      } else {
+        label.textContent = 'pick me';
+        status.classList.add('not-watching');
+      }
       status.appendChild(dot);
-      status.appendChild(document.createTextNode("watching"));
+      status.appendChild(label);
 
-      var chip = document.createElement("button");
-      chip.className = "chip";
-      chip.type = "button";
-      chip.textContent = "notify me";
+      var action = document.createElement('button');
+      action.className = 'chip';
+      action.type = 'button';
+      action.textContent = watched ? 'untrack' : 'track';
+      action.dataset.slug = film.slug;
 
       row.appendChild(title);
-      row.appendChild(cinema);
-      row.appendChild(next);
       row.appendChild(status);
-      row.appendChild(chip);
+      row.appendChild(action);
 
-      row.addEventListener("click", function () { openDialog(film); });
-      row.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDialog(film); }
+      row.addEventListener('click', function (e) {
+        if (e.target === action) return; // button handles its own click
+        openDialog(film.slug);
       });
-      chip.addEventListener("click", function (e) { e.stopPropagation(); openDialog(film); });
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDialog(film.slug); }
+      });
+
+      action.addEventListener('click', function (e) {
+        e.stopPropagation();
+        toggleTrack(film.slug, !watched);
+      });
 
       frag.appendChild(row);
     });
-    ledger.appendChild(frag);
-    renderedOnce = true;
+    catalogLedger.appendChild(frag);
   }
 
-  /* ---------- subscribe dialog ---------------------------------- */
+  function toggleTrack (slug, enable) {
+    if (enable) {
+      tracked.add(slug);
+      localStorage.setItem('voxwatch_tracked', JSON.stringify(Array.from(tracked)));
+      publishControl('PICK ' + slug);
+    } else {
+      tracked.delete(slug);
+      localStorage.setItem('voxwatch_tracked', JSON.stringify(Array.from(tracked)));
+      publishControl('UNPICK ' + slug);
+    }
+    refreshLedger();
+  }
 
-  function openDialog(film) {
-    $("dialog-eyebrow").textContent = "tracking · " + film.slug;
-    $("dialog-title").textContent = film.title;
-    $("dialog-cinema").textContent = film.cinema;
+  function publishControl (message) {
+    if (!CONTROL_TOPIC) return;
+    fetch(NTFY_SERVER + '/' + CONTROL_TOPIC + '/publish', {
+      method: 'PUT',
+      body: message,
+      headers: { 'Content-Type': 'text/plain' }
+    }).catch(function () {}); // fire and forget
+  }
 
-    var timesWrap = $("dialog-times");
-    timesWrap.textContent = "";
-    var hasTimes = false;
-    film.days.forEach(function (day) {
-      if (!day.times.length) return;
-      hasTimes = true;
-      var head = document.createElement("span");
-      head.className = "time-chip";
-      head.textContent = day.label;
-      head.style.borderColor = "var(--color-accent)";
-      head.style.color = "var(--color-accent)";
-      timesWrap.appendChild(head);
-      day.times.forEach(function (t) {
-        var chip = document.createElement("span");
-        chip.className = "time-chip";
-        chip.textContent = formatTime(t.time) + (t.format ? " · " + t.format : "");
-        if (t.booking && t.booking.indexOf("http") === 0) {
-          var a = document.createElement("a");
-          a.href = t.booking;
-          a.className = "time-chip";
-          a.target = "_blank";
-          a.rel = "noopener";
-          a.textContent = chip.textContent;
-          a.style.textDecoration = "none";
-          a.style.color = "var(--color-ink)";
-          timesWrap.replaceChild(a, chip);
-        } else {
-          timesWrap.appendChild(chip);
+  function openDialog (slug) {
+    var film = catalog.find(function (f) { return f.slug === slug; });
+    if (!film) return;
+    var watched = showtimes && showtimes.films.some(function (f) { return f.slug === slug; });
+    var filmData = watched ? showtimes.films.find(function (f) { return f.slug === slug; }) : film;
+
+    dialogTitle.textContent = filmData.title;
+    dialogCinema.textContent = filmData.cinema || 'default cinema';
+    dialogTopic.textContent = filmData.topic;
+    dialogLink.href = 'https://ntfy.sh/' + filmData.topic;
+    dialogLink.setAttribute('href', 'https://ntfy.sh/' + filmData.topic);
+
+    var timesHtml = '';
+    if (filmData.days && filmData.days.length) {
+      filmData.days.forEach(function (day) {
+        if (day.times && day.times.length) {
+          day.times.forEach(function (t) {
+            var fmt = t.format ? ' [' + t.format + ']' : '';
+            var link = t.booking ? '<a href="' + t.booking + '" target="_blank" rel="noopener" class="time-chip-link">' + t.time + fmt + '</a>' : '<span class="time-chip">' + t.time + fmt + '</span>';
+            timesHtml += link;
+          });
         }
       });
-    });
-    if (!hasTimes) {
-      var none = document.createElement("span");
-      none.className = "time-chip";
-      none.textContent = "no showtimes yet — you\u2019ll be pinged first";
-      timesWrap.appendChild(none);
     }
+    if (!timesHtml) timesHtml = '<span class="time-chip">no showtimes yet</span>';
+    dialogTimes.innerHTML = timesHtml;
 
-    var topic = film.topic;
-    var url = "https://ntfy.sh/" + topic;
-    $("dialog-topic").textContent = topic;
-    var link = $("dialog-link");
-    link.href = url;
+    // QR
+    var moduleColor = getComputedStyle(document.documentElement).getPropertyValue('--color-qr-module').trim() || '#2a2530';
+    var qr = qrcode(0, 'M');
+    qr.addData('https://ntfy.sh/' + filmData.topic);
+    qr.make();
+    var svg = qr.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
+    svg = svg.replace(/fill="(?:#000|#000000|black)"/g, 'fill="' + moduleColor + '"');
+    dialogQR.innerHTML = svg;
 
-    renderQr(url);
-
-    var copyBtn = $("dialog-copy");
-    copyBtn.textContent = "copy";
-    copyBtn.classList.remove("copied");
-    copyBtn.onclick = function () {
-      var done = function () {
-        copyBtn.textContent = "copied";
-        copyBtn.classList.add("copied");
-        setTimeout(function () {
-          copyBtn.textContent = "copy";
-          copyBtn.classList.remove("copied");
-        }, 1600);
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(topic).then(done, function () { fallbackCopy(topic, done); });
-      } else {
-        fallbackCopy(topic, done);
-      }
-    };
-
-    dialogEl.classList.remove("closing");
-    if (typeof dialogEl.showModal === "function") dialogEl.showModal();
+    dialog.showModal();
   }
 
-  function fallbackCopy(text, done) {
-    var ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand("copy"); } catch (e) { }
-    document.body.removeChild(ta);
-    done();
-  }
-
-  function closeDialog() {
-    if (!dialogEl.open) return;
-    dialogEl.classList.add("closing");
+  function closeDialog () {
+    dialog.classList.add('closing');
     setTimeout(function () {
-      dialogEl.classList.remove("closing");
-      if (dialogEl.open) dialogEl.close();
+      dialog.close();
+      dialog.classList.remove('closing');
     }, 160);
   }
 
-  function renderQr(text) {
-    var holder = $("dialog-qr");
-    holder.textContent = "";
-    if (typeof qrcode === "undefined") return;
-    var qr;
-    try {
-      qr = qrcode(0, "M");
-      qr.addData(text);
-      qr.make();
-    } catch (e) { return; }
-    var moduleColor = getComputedStyle(document.documentElement)
-      .getPropertyValue("--color-qr-module").trim() || "#2a2530";
-    var svg = qr.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
-    svg = svg.replace(/fill="(?:#000|#000000|black)"/g, 'fill="' + moduleColor + '"');
-    holder.innerHTML = svg;
-    holder.querySelector("svg").setAttribute("aria-hidden", "true");
+  dialogClose.addEventListener('click', closeDialog);
+  dialog.addEventListener('cancel', function (e) { e.preventDefault(); closeDialog(); });
+  dialog.addEventListener('click', function (e) {
+    if (e.target === dialog) closeDialog();
+  });
+
+  dialogCopy.addEventListener('click', function () {
+    var text = dialogTopic.textContent;
+    if (!navigator.clipboard) { fallbackCopy(text); return; }
+    navigator.clipboard.writeText(text).then(
+      function () { done(); },
+      function () { fallbackCopy(text); }
+    );
+    function fallbackCopy (t) {
+      var ta = document.createElement('textarea');
+      ta.value = t; ta.setAttribute('readonly', ''); ta.style.position = 'absolute'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      done();
+    }
+    function done () {
+      dialogCopy.textContent = 'copied';
+      dialogCopy.classList.add('copied');
+      setTimeout(function () { dialogCopy.textContent = 'copy'; dialogCopy.classList.remove('copied'); }, 1800);
+    }
+  });
+
+  function refreshLedger () {
+    var watchedMap = {};
+    if (showtimes && showtimes.films) {
+      showtimes.films.forEach(function (f) { watchedMap[f.slug] = true; });
+    }
+    // merge tracked into watchedMap so "track" buttons stay pressed
+    tracked.forEach(function (s) { watchedMap[s] = true; });
+    renderLedger(catalog, watchedMap);
   }
 
-  dialogEl.addEventListener("click", function (e) {
-    if (e.target === dialogEl) closeDialog();
-  });
-  dialogEl.addEventListener("cancel", function (e) {
-    e.preventDefault();
-    closeDialog();
-  });
-  $("dialog-close").addEventListener("click", closeDialog);
+  function loadCatalog () {
+    return fetch(CATALOG_URL, { signal: AbortSignal.timeout(4000) })
+      .then(function (r) { return r.json(); })
+      .catch(function () {
+        var snap = CATALOG_SNAPSHOT ? JSON.parse(CATALOG_SNAPSHOT.textContent) : null;
+        return snap || { films: [] };
+      });
+  }
 
-  /* ---------- boot ---------------------------------------------- */
+  function loadShowtimes () {
+    return fetch(DATA_URL, { signal: AbortSignal.timeout(4000) })
+      .then(function (r) { return r.json(); })
+      .catch(function () {
+        var snap = SNAPSHOT ? JSON.parse(SNAPSHOT.textContent) : null;
+        return snap;
+      });
+  }
 
-  loadData()
-    .then(function (data) {
-      if (!data || !Array.isArray(data.films) || !data.films.length) throw new Error("empty payload");
-      setStatus("live", data);
-      setStats(data);
-      renderLedger(data.films);
-    })
-    .catch(function () {
-      var snap = snapshotData();
-      if (snap && Array.isArray(snap.films) && snap.films.length) {
-        setStatus("snapshot", snap);
-        setStats(snap);
-        renderLedger(snap.films);
-      } else {
-        setStatus("offline", null);
-        ledgerEmpty.textContent = "no data available";
+  function init () {
+    // restore tracked from localStorage
+    try {
+      var stored = JSON.parse(localStorage.getItem('voxwatch_tracked') || '[]');
+      stored.forEach(function (s) { tracked.add(s); });
+    } catch (e) {}
+
+    loadCatalog().then(function (cat) {
+      catalog = cat.films || [];
+      return loadShowtimes();
+    }).then(function (st) {
+      showtimes = st;
+      var watchedMap = {};
+      if (showtimes && showtimes.films) {
+        showtimes.films.forEach(function (f) { watchedMap[f.slug] = true; });
       }
+      tracked.forEach(function (s) { watchedMap[s] = true; });
+      setStatus(showtimes ? 'live' : 'snapshot', showtimes || { films: [], last_synced: '' });
+      setStats(showtimes || { films: [], last_synced: '' });
+      renderLedger(catalog, watchedMap);
+    }).catch(function () {
+      setStatus('offline', null);
+      catalogEmpty.textContent = 'failed to load catalog';
     });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // reduced-motion detection
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.classList.add('reduce-motion');
+  }
 })();

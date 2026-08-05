@@ -17,6 +17,8 @@ Built for **"The Odyssey â€“ City Centre Almaza"**, works for **any movie a
 ## Features
 
 - **Multi-film watchlist** â€” one line per film in `movies.conf` (`slug|name|cinema|url`)
+- **Full-catalog site** â€” the voxwatch site shows the current Vox lineup (`site/data/catalog.json`) and lets visitors **pick their film** right there
+- **Visitor picks** â€” clicking *track* on the site publishes `PICK <slug>` to a public ntfy control topic; the monitor polls it every run and starts watching that film (picks persist on disk)
 - **Public per-film topics** â€” `voxwatch-<slug>` on ntfy.sh; visitors subscribe with zero
   accounts, you get a private mirror topic
 - **Live website data** â€” `site/data/showtimes.json` rewritten every run (atomic)
@@ -95,7 +97,10 @@ schtasks /query /tn VoxShowtimesMonitor /v /fo LIST   # verify
 
 ## Adding a film
 
-Absolutely codeless â€” one line in `movies.conf`:
+**Visitors** just open the voxwatch site and hit *track* on any film in the catalog â€” the
+monitor picks it up on the next run (their picks are stored in `src/.picked_slugs`).
+
+**You** can also add films permanently, codeless â€” one line in `movies.conf`:
 
 ```bash
 # slug|Display Name|Cinema Name|Full Vox movie URL
@@ -135,6 +140,9 @@ dune-part-three|Dune: Part Three|Mall of Egypt|https://egy.voxcinemas.com/movies
 ```
 
 - **State files**: `.known_showtimes_<slug>` (one per film). Changed schedule â†’ alert + update.
+- **Visitor picks**: site â†’ ntfy `voxwatch-control` topic (`PICK <slug>` / `UNPICK <slug>`) â†’
+  monitor polls it every run (since-cursor in `.control_last_id`) and merges picks into the
+  watchlist, persisted in `.picked_slugs`.
 - **Site data**: `site/data/showtimes.json` â€” atomic write every run; the voxwatch site
   fetches it live, and falls back to a baked snapshot when the watcher is offline.
 - **Log**: `vox_showtimes.log` (timestamped activity).

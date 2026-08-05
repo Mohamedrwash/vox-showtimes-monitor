@@ -24,6 +24,15 @@ HEARTBEAT_TIMEOUT=900
 # Ignore today's and tomorrow's showtimes (sold-out / not interesting)
 IGNORE_TODAY_TOMORROW=true
 
+# ---- Visitor picks (site → monitor) --------------------------
+# The site publishes PICK/UNPICK to a control topic; the monitor
+# polls it and dynamically adds/removes films to the watchlist.
+# Set USE_NTFY=true and CONTROL_TOPIC to enable.
+# CONTROL_TOPIC is a public ntfy topic (anyone can post, so keep
+# it unguessable if you don't want spam).
+CONTROL_TOPIC="voxwatch-control"
+DEFAULT_CINEMA="City Centre Almaza"
+
 # ---- Daily digest --------------------------------------------
 # Send a once-per-day summary of today + tomorrow (per film)
 ENABLE_DIGEST=true
