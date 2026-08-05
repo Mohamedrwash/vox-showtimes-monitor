@@ -258,10 +258,13 @@
 
   function loadShowtimes () {
     return fetch(DATA_URL, { signal: AbortSignal.timeout(4000) })
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r.ok) throw new Error('http ' + r.status);
+        return r.json().then(function (j) { return { source: 'live', data: j }; });
+      })
       .catch(function () {
         var snap = SNAPSHOT ? JSON.parse(SNAPSHOT.textContent) : null;
-        return snap;
+        return { source: 'snapshot', data: snap };
       });
   }
 
@@ -276,13 +279,13 @@
       catalog = cat.films || [];
       return loadShowtimes();
     }).then(function (st) {
-      showtimes = st;
+      showtimes = st.data;
       var watchedMap = {};
       if (showtimes && showtimes.films) {
         showtimes.films.forEach(function (f) { watchedMap[f.slug] = true; });
       }
       tracked.forEach(function (s) { watchedMap[s] = true; });
-      setStatus(showtimes ? 'live' : 'snapshot', showtimes || { films: [], last_synced: '' });
+      setStatus(showtimes ? st.source : 'offline', showtimes || { films: [], last_synced: '' });
       setStats(showtimes || { films: [], last_synced: '' });
       renderLedger(catalog, watchedMap);
     }).catch(function () {

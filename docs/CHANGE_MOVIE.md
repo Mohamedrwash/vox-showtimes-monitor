@@ -3,6 +3,15 @@
 The watchlist is **fully config-driven** — switching films requires no code
 edits and no reinstall.
 
+## Two ways films get watched
+
+1. **`movies.conf` (owner's list)** — permanent, one film per line (see below).
+2. **Visitor picks (via the site)** — anyone clicks *track* on the voxwatch site;
+   that publishes `PICK <slug>` to the `CONTROL_TOPIC` ntfy topic and the monitor
+   starts watching the film at `DEFAULT_CINEMA`. Picks persist in `src/.picked_slugs`
+   (slug|name|cinema|url per line) and can be removed the same way (*untrack*).
+   Films in `movies.conf` can't be unpicked from the site.
+
 ## Steps
 
 1. Open `movies.conf` — one film per line:

@@ -22,6 +22,17 @@ A: `site/data/showtimes.json` only holds what the monitor wrote last run. Remove
 the film's line from `movies.conf`, delete `.known_showtimes_<slug>`, and run
 `bash src/vox-monitor.sh` once — the site updates on the next write.
 
+**Q: I clicked *track* on the site but the film never gets watched.**
+A: The site publishes `PICK <slug>` to the `CONTROL_TOPIC` ntfy topic; the monitor
+processes it on its next run (up to 5 minutes). If it still doesn't show, check:
+- `CONTROL_TOPIC` is set in `monitor.conf` (and `USE_NTFY=true`)
+- the publish actually landed: `curl -s "https://ntfy.sh/<CONTROL_TOPIC>/json?poll=1&since=all"`
+- the log shows the pick: `grep PICK vox_showtimes.log`
+
+**Q: I clicked *untrack* but the film stays on the site.**
+A: Films in `movies.conf` can't be unpicked from the site (the owner's list wins).
+Only visitor-picked films (in `src/.picked_slugs`) can be untracked.
+
 **Q: The movie page structure changed and nothing is found.**
 A: Run `bash src/vox-monitor.sh` and check `vox_showtimes.log`. If the day
 tabs or cinema headings changed on the Vox site, the selectors in

@@ -49,6 +49,20 @@ personal notification channels â€” flip at least one `USE_*` to `true` (see
 [NOTIFICATIONS.md](NOTIFICATIONS.md)). `USE_NTFY=true` is what powers the public
 per-film topics visitors subscribe to; keep it on.
 
+Two optional-but-useful settings for visitor picks:
+
+| Setting | Meaning | Example |
+|---------|---------|---------|
+| `CONTROL_TOPIC` | Public ntfy topic the site publishes `PICK <slug>` / `UNPICK <slug>` to; the monitor polls it every run | `voxwatch-control` |
+| `DEFAULT_CINEMA` | Cinema used for visitor-picked films (picks have no cinema of their own) | `City Centre Almaza` |
+
+The site's catalog (`site/data/catalog.json`, 10 "What's On" films scraped from the Vox
+homepage) is refreshed manually when the lineup changes:
+
+```bash
+bash scripts/update-catalog.sh   # rewrites site/data/catalog.json
+```
+
 ## Step 3 â€” Test manually
 
 ```bash
