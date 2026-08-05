@@ -152,12 +152,18 @@ last_synced=$(date '+%Y-%m-%dT%H:%M:%S%z')
 echo "{\"last_synced\":\"$last_synced\",\"films\":[$films_json]}" > "$DATA_FILE"
 log "wrote $DATA_FILE"
 
-# ---------- notifications (dedupe per slug|day per day) ----------
+# ---------- notifications (dedupe per slug|day per booking) ----------
 #
 # Two kinds of alert per track, each with its own dedupe key:
-#   slug|day                -> public film topic (voxwatch-<slug>), once per film+day
+#   slug|day                -> public film topic (voxwatch-<slug>), once per booking
 #   u:<client_id>|slug|day  -> that visitor's browser topic (voxwatch-u-<client_id>)
 # A visitor only gets a browser ping for their own chosen day.
+#
+# The stored value is the booking signature (day + exact showtimes). A ping is
+# sent only when the signature changes — i.e. when a NEW booking appears. The
+# same old booking never re-pings. Keys are deleted when the day goes dark, so
+# a booking that comes back (or gains new showtimes) alerts again.
+# (Legacy keys store a YYYYMMDD date — treated as already sent.)
 
 if [ ! -f "$NOTIFIED_FILE" ]; then
     echo "{}" > "$NOTIFIED_FILE"
@@ -219,23 +225,37 @@ while IFS= read -r tr; do
     times=$(echo "$hit" | cut -d'|' -f3)
     msg="🎬 $title is available on $label at $times"
 
-    # public film topic: once per film+day
-    if [ "$(jq -r --arg k "$key" '.[$k] // ""' <<< "$new_notified")" = "$(date +%Y%m%d)" ]; then
-        log "notify: $key — already notified today"
+    # signature = booking identity (day + exact showtimes list); the day label
+    # is excluded so "Tomorrow" -> "Today" label drift never re-triggers.
+    sig=$(echo "$hit" | cut -d'|' -f1,3)
+
+    already_notified() {
+        local k="$1" old
+        old=$(jq -r --arg k "$k" '.[$k] // ""' <<< "$new_notified")
+        if [ -n "$old" ]; then
+            [ "$old" = "$sig" ] && return 0
+            [[ "$old" =~ ^[0-9]{8}$ ]] && return 0   # legacy per-day keys
+        fi
+        return 1
+    }
+
+    # public film topic: once per booking
+    if already_notified "$key"; then
+        log "notify: $key — same booking already notified"
     elif notify "$msg" "$title — available $label" "$url" "$topic"; then
-        new_notified=$(jq --arg k "$key" --arg t "$(date +%Y%m%d)" '.[$k] = $t' <<< "$new_notified")
+        new_notified=$(jq --arg k "$key" --arg v "$sig" '.[$k] = $v' <<< "$new_notified")
         changed=1
         if [ -n "$NTFY_MIRROR" ]; then
             notify "$msg" "$title — available $label" "$url" "$NTFY_MIRROR" || true
         fi
     fi
 
-    # this visitor's browser topic: once per user+film+day
+    # this visitor's browser topic: once per booking
     if [ -n "$user_topic" ]; then
-        if [ "$(jq -r --arg k "$user_key" '.[$k] // ""' <<< "$new_notified")" = "$(date +%Y%m%d)" ]; then
-            log "notify: $user_key — already notified today"
+        if already_notified "$user_key"; then
+            log "notify: $user_key — same booking already notified"
         elif notify "$msg" "$title — available $label" "$url" "$user_topic"; then
-            new_notified=$(jq --arg k "$user_key" --arg t "$(date +%Y%m%d)" '.[$k] = $t' <<< "$new_notified")
+            new_notified=$(jq --arg k "$user_key" --arg v "$sig" '.[$k] = $v' <<< "$new_notified")
             changed=1
         fi
     fi
